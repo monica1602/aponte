@@ -1,6 +1,7 @@
 "use server";
 
 import crypto from "node:crypto";
+import { passwordProblem } from "./password-policy";
 import { headers } from "next/headers";
 import { getDb, hashPassword } from "./db";
 import { createSession } from "./auth";
@@ -67,7 +68,8 @@ export async function resetPassword(formData: FormData) {
   const password = str(formData, "password", 200);
   const confirmation = str(formData, "confirmation", 200);
   const ret = `/redefinir-senha?token=${encodeURIComponent(token)}`;
-  if (password.length < 10) back(ret, "error", "A senha precisa ter pelo menos 10 caracteres.");
+  const weak = passwordProblem(password);
+  if (weak) back(ret, "error", weak);
   if (password !== confirmation) back(ret, "error", "A confirmacao de senha nao confere.");
   const row = (await getDb()
     .prepare("SELECT id, user_id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")

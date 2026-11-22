@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PASSWORD_HINT } from "@/lib/password-policy";
 import { EVENT_CATEGORIES } from "@/lib/catalog";
 import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
@@ -115,7 +116,7 @@ function EventCreator() {
 }
 
 function MenteeCreator() {
-  return <Card><h2 className="font-semibold">Adicionar mentorado</h2><p className="mt-1 text-xs text-muted">O acesso sera criado com uma senha temporaria. Envie-a por um canal seguro; no primeiro login, a pessoa devera trocá-la.</p><form action={createMentee} className="mt-3 space-y-3"><input name="name" required minLength={2} placeholder="Nome completo" className={inputCls}/><input name="email" type="email" required placeholder="email@exemplo.com" className={inputCls}/><input name="temporary_password" type="password" minLength={10} required placeholder="Senha temporaria (minimo 10 caracteres)" className={inputCls}/><button className={btnSecondaryCls}>Criar e vincular mentorado</button></form></Card>;
+  return <Card><h2 className="font-semibold">Adicionar mentorado</h2><p className="mt-1 text-xs text-muted">O acesso sera criado com uma senha temporaria. Envie-a por um canal seguro; no primeiro login, a pessoa devera trocá-la.</p><form action={createMentee} className="mt-3 space-y-3"><input name="name" required minLength={2} placeholder="Nome completo" className={inputCls}/><input name="email" type="email" required placeholder="email@exemplo.com" className={inputCls}/><input name="temporary_password" type="password" minLength={8} required placeholder="Senha temporaria" title={PASSWORD_HINT} className={inputCls}/><button className={btnSecondaryCls}>Criar e vincular mentorado</button></form></Card>;
 }
 
 function AvailabilityEditor({ rows }: { rows: AvailabilityRow[] }) {

@@ -12,6 +12,7 @@ import {
   isAdmin,
 } from "./auth";
 import { alertAdmin, ROLE_PT } from "./admin-alert";
+import { passwordProblem } from "./password-policy";
 
 async function nameOf(id: number): Promise<string> {
   const r = (await getDb().prepare("SELECT name FROM users WHERE id = ?").get(id)) as { name: string } | undefined;
@@ -126,7 +127,8 @@ export async function registerAccount(formData: FormData) {
   const ret = ["mentor", "mentee", "company"].includes(role) ? `/signup?role=${role}` : "/signup";
   if (name.length < 2) back(ret, "error", "Informe seu nome (ou o nome da empresa) com pelo menos 2 caracteres.");
   if (!EMAIL_RE.test(email)) back(ret, "error", "Informe um email valido, por exemplo nome@dominio.com.");
-  if (password.length < 10) back(ret, "error", "A senha precisa ter pelo menos 10 caracteres.");
+  const weak = passwordProblem(password);
+  if (weak) back(ret, "error", weak);
   if (password !== confirmation) back(ret, "error", "A confirmacao de senha nao confere.");
   if (!["mentor", "mentee", "company"].includes(role)) {
     back(ret, "error", "Escolha se deseja se cadastrar como mentor, mentorado ou empresa.");
@@ -178,8 +180,10 @@ export async function createMentee(formData: FormData) {
   const name = str(formData, "name");
   const email = str(formData, "email").toLowerCase();
   const temporaryPassword = str(formData, "temporary_password");
-  if (name.length < 2 || !EMAIL_RE.test(email) || temporaryPassword.length < 10) {
-    back("/dashboard", "error", "Informe nome, email valido e uma senha temporaria de ao menos 10 caracteres.");
+  if (name.length < 2 || !EMAIL_RE.test(email)) back("/dashboard", "error", "Informe nome e email valido.");
+  const weakTemp = passwordProblem(temporaryPassword);
+  if (weakTemp) {
+    back("/dashboard", "error", `Senha temporaria: ${weakTemp}`);
   }
   const db = getDb();
   if (await db.prepare("SELECT id FROM users WHERE email = ?").get(email)) {
@@ -199,8 +203,10 @@ export async function changeInitialPassword(formData: FormData) {
   if (!user) redirect("/login");
   const password = str(formData, "password");
   const confirmation = str(formData, "confirmation");
-  if (password.length < 10 || password !== confirmation) {
-    back("/primeiro-acesso", "error", "Use uma senha de ao menos 10 caracteres e confirme o mesmo valor.");
+  const weak = passwordProblem(password);
+  if (weak) back("/primeiro-acesso", "error", weak);
+  if (password !== confirmation) {
+    back("/primeiro-acesso", "error", "A confirmacao de senha nao confere.");
   }
   if (formData.get("employment_terms") !== "on" || formData.get("code_of_conduct") !== "on") {
     back("/primeiro-acesso", "error", "Aceite as condicoes de participacao e o codigo de conduta para continuar.");

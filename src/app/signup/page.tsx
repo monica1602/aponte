@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PASSWORD_HINT } from "@/lib/password-policy";
 import { registerAccount } from "@/lib/actions";
 import { Card, Flash, btnCls, inputCls } from "@/components/ui";
 
@@ -45,12 +46,13 @@ export default async function SignupPage({
             <input name="email" type="email" required autoComplete="email" placeholder="email@exemplo.com" className={inputCls} />
           </label>
           <label className="block space-y-1 text-sm">
-            <span>Senha (minimo 10 caracteres)</span>
-            <input name="password" type="password" required minLength={10} autoComplete="new-password" className={inputCls} />
+            <span>Senha</span>
+            <input name="password" type="password" required minLength={8} autoComplete="new-password" aria-describedby="regra-senha" className={inputCls} />
+            <span id="regra-senha" className="text-xs text-muted">{PASSWORD_HINT}</span>
           </label>
           <label className="block space-y-1 text-sm">
             <span>Confirme a senha</span>
-            <input name="confirmation" type="password" required minLength={10} autoComplete="new-password" className={inputCls} />
+            <input name="confirmation" type="password" required minLength={8} autoComplete="new-password" className={inputCls} />
           </label>
           <label className="flex items-start gap-2 text-xs leading-relaxed text-muted">
             <input name="employment_terms" type="checkbox" required className="mt-0.5" />
