@@ -15,7 +15,7 @@ export default function SouMentoradoPage() {
         features: [
           { title: "Busca de mentores por compatibilidade", description: "Filtre por ferramentas, tipo de projeto, tipo de ajuda, disponibilidade, experiencia e modalidade." },
           { title: "Pedido de mentoria com objetivo", description: "Explique o que voce quer aprender; o mentor recebe uma notificacao." },
-          { title: "Projetos particulares privados", description: "Crie projetos de portfolio visiveis so para voce e para os mentores que autorizar. Revogue quando quiser." },
+          { title: "Projetos pessoais abertos", description: "Publique projetos de portfolio, receba candidaturas e convide mentores e outros mentorados para ajudar." },
           { title: "Participacao em projetos", description: "Candidate-se a projetos open source, educacionais e de empresas." },
           { title: "Metas e etapas", description: "Defina metas, marque etapas concluidas e receba feedback do mentor." },
           { title: "Eventos e certificados", description: "Inscreva-se em eventos, faca check-in e receba certificados verificaveis." },

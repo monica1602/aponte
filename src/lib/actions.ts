@@ -571,7 +571,6 @@ export async function deleteEvent(formData: FormData) {
 
 export async function requestEventAccess(formData: FormData) {
   const user = await me();
-  if (user.role !== "mentee") back("/eventos", "error", "A inscricao em eventos e destinada a mentorados.");
   const eventId = Number(formData.get("event_id"));
   const ret = str(formData, "return") || "/eventos";
   const db = getDb();

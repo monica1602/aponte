@@ -436,6 +436,8 @@ async function init() {
     await seedIfEmpty(db);
     await seedEducation(db);
     await upgradeDemoPasswords(db);
+    await db.exec("UPDATE projects SET status = 'aberto' WHERE visibility = 'private' AND status = 'andamento'");
+    await db.exec("UPDATE projects SET visibility = 'public' WHERE visibility <> 'public'");
   });
 }
 
@@ -785,7 +787,7 @@ async function seedEducation(db: Db) {
     "Analise de dados publicos do INEP para entender a evasao no ensino medio.",
     "Projeto pessoal de portfolio. Estou limpando os microdados e quero montar um painel com os principais indicadores.",
     "Praticar pandas, SQL e visualizacao de dados.", "Python, SQL, Power BI", "Analise de Dados", "Intermediario", "Educacional",
-    "Online", "3 a 5 horas", null, "", "Revisao da modelagem e sugestoes de graficos", "andamento", "private"
+    "Online", "3 a 5 horas", null, "", "Revisao da modelagem e sugestoes de graficos", "aberto", "public"
   );
   await db.prepare("INSERT INTO project_access (project_id, mentor_id) VALUES (?,?)").run(p1, carlos);
   await db.prepare("INSERT INTO project_feedback (project_id, author_id, body) VALUES (?,?,?)").run(

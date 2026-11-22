@@ -15,7 +15,7 @@ export default function SouMentorPage() {
         features: [
           { title: "Perfil de mentor completo", description: "Ferramentas, areas, nivel de experiencia, tipos de ajuda, dias, periodos e modalidade." },
           { title: "Pedidos de mentoria com objetivo", description: "Cada pedido chega com o objetivo do mentorado. Voce aceita ou recusa no painel." },
-          { title: "Projetos dos mentorados", description: "Acesse projetos particulares somente quando o mentorado autorizar, e deixe feedback." },
+          { title: "Projetos dos mentorados", description: "Aceite convites para ajudar nos projetos dos mentorados e deixe feedback." },
           { title: "Projetos educacionais e open source", description: "Publique projetos para a comunidade e avalie as candidaturas." },
           { title: "Acompanhamento de metas", description: "Veja metas e etapas dos seus mentorados e registre feedback sobre a evolucao." },
           { title: "Eventos e certificados", description: "Crie eventos online, presenciais ou hibridos, faca check-in e emita certificados." },

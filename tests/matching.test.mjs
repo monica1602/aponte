@@ -77,22 +77,15 @@ test("empresa: ferramenta conhecida vale mais que ferramenta a aprender", () => 
   assert.equal(matchMentee({ ...q, tools: ["Java"], toolsRequired: true }, joao), null);
 });
 
-const priv = { ownerId: 1, kind: "particular", visibility: "private", status: "andamento" };
+const priv = { ownerId: 1, kind: "particular", visibility: "public", status: "aberto" };
 const oss = { ownerId: 1, kind: "open_source", visibility: "public", status: "aberto" };
 
-test("projeto particular: dono e mentor autorizado veem; empresa e outros nao", () => {
-  const ctx = { grantedMentorIds: [2], participantIds: [] };
-  assert.equal(canViewProject({ id: 1, role: "mentee" }, priv, ctx), true);
-  assert.equal(canViewProject({ id: 2, role: "mentor" }, priv, ctx), true);
-  assert.equal(canViewProject({ id: 3, role: "mentor" }, priv, ctx), false);
-  assert.equal(canViewProject({ id: 4, role: "company" }, priv, { grantedMentorIds: [4], participantIds: [] }), false);
-  assert.equal(canViewProject({ id: 5, role: "mentee" }, priv, ctx), false);
-  assert.equal(canViewProject(null, priv, ctx), false);
-  assert.equal(isPubliclyListed(priv), false);
-});
-
-test("revogar acesso retira a permissao imediatamente", () => {
-  assert.equal(canViewProject({ id: 2, role: "mentor" }, priv, { grantedMentorIds: [], participantIds: [] }), false);
+test("projeto pessoal aparece para todos os tipos de cadastro", () => {
+  const ctx = { grantedMentorIds: [], participantIds: [] };
+  for (const v of [{ id: 1, role: "mentee" }, { id: 3, role: "mentor" }, { id: 4, role: "company" }, { id: 5, role: "mentee" }, null]) {
+    assert.equal(canViewProject(v, priv, ctx), true);
+  }
+  assert.equal(isPubliclyListed(priv), true);
 });
 
 test("projeto publico aparece para todos; rascunho so para o dono", () => {

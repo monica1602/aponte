@@ -49,7 +49,7 @@ export async function listPublicProjects(f: ProjectFilters = {}): Promise<(Proje
   const rows = await getDb()
     .prepare(
       `SELECT p.*, u.name AS owner_name, u.role AS owner_role FROM projects p JOIN users u ON u.id = p.owner_id
-       WHERE p.kind != 'particular' AND p.visibility = 'public' AND p.status NOT IN ('rascunho','arquivado')
+       WHERE p.visibility = 'public' AND p.status NOT IN ('rascunho','arquivado')
        ORDER BY (p.status = 'aberto') DESC, p.created_at DESC`
     )
     .all() as unknown as (Project & { owner_name: string; owner_role: string })[];

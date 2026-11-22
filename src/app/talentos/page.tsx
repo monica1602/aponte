@@ -26,7 +26,7 @@ export default async function TalentosPage({ searchParams }: { searchParams: Pro
   const like = `%${q}%`;
 
   const ownProjects = user && user.role !== "mentee"
-    ? (await db.prepare("SELECT * FROM projects WHERE owner_id = ? AND kind != 'particular' ORDER BY updated_at DESC").all(user.id) as unknown as Project[])
+    ? (await db.prepare("SELECT * FROM projects WHERE owner_id = ? ORDER BY updated_at DESC").all(user.id) as unknown as Project[])
     : [];
   const projectId = Number(val(sp, "projeto")) || 0;
   const project = ownProjects.find((p) => p.id === projectId);
@@ -70,7 +70,6 @@ export default async function TalentosPage({ searchParams }: { searchParams: Pro
       <PageHeader eyebrow="Talentos" title="Encontre mentorados compativeis">
         Pessoas em inicio de carreira ou transicao com contribuicoes reais. A compatibilidade considera ferramentas (30%),
         tipo de projeto (25%), nivel (15%), objetivos de aprendizado (15%), disponibilidade (10%) e modalidade (5%).
-        Projetos particulares nunca aparecem aqui.
       </PageHeader>
       <Flash params={{ msg: typeof sp.msg === "string" ? sp.msg : undefined, error: typeof sp.error === "string" ? sp.error : undefined }} />
 

@@ -43,7 +43,7 @@ export const SECTORS = [
 ];
 
 export const PROJECT_KINDS = {
-  particular: "Projeto particular",
+  particular: "Projeto pessoal",
   open_source: "Projeto open source",
   educacional: "Projeto educacional",
   empresarial: "Projeto empresarial",

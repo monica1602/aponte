@@ -25,7 +25,7 @@ export default async function EmpresasPage({ searchParams }: { searchParams: Pro
     : [];
   const rows = (await db.prepare(
     `SELECT u.id, u.name, u.headline,
-       (SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id AND p.kind <> 'particular' AND p.status <> 'rascunho') AS projects,
+       (SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id AND p.status <> 'rascunho') AS projects,
        (SELECT COUNT(*) FROM events e WHERE e.owner_id = u.id) AS events
      FROM users u WHERE u.role = 'company' AND u.account_status = 'active' ORDER BY u.name`
   ).all()) as unknown as Company[];

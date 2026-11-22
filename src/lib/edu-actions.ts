@@ -122,8 +122,8 @@ export async function createProject(formData: FormData) {
   if (slots !== null && (!Number.isInteger(slots) || slots < 1 || slots > 500)) back(ret, "error", "Vagas deve ser um numero inteiro maior que zero.");
   const repo = optionalUrl(formData, "repo_url", "Repositorio", ret);
   if (kind === "open_source" && !repo) back(ret, "error", "Projetos open source precisam do link do repositorio.");
-  const visibility = kind === "particular" ? "private" : formData.get("visibility") === "invite" ? "invite" : "public";
-  const status = formData.get("draft") === "on" ? "rascunho" : kind === "particular" ? "andamento" : "aberto";
+  const visibility = "public";
+  const status = formData.get("draft") === "on" ? "rascunho" : "aberto";
   const result = await getDb()
     .prepare(
       `INSERT INTO projects (owner_id, kind, title, summary, description, goals, tools, areas, difficulty, opportunity_type,
@@ -140,7 +140,7 @@ export async function createProject(formData: FormData) {
   const id = Number(result.lastInsertRowid);
   await audit(user.id, "project.created", "project", id);
   await alertAdmin(`Novo projeto: "${title}", de ${user.name}`);
-  back(`/projetos/${id}`, "msg", kind === "particular" ? "Projeto particular criado. Somente voce e os mentores que autorizar podem ve-lo. Convide mentores e mentorados na lateral." : "Projeto criado. Convide mentores e mentorados na lateral.");
+  back(`/projetos/${id}`, "msg", "Projeto criado. Ele aparece para todos e ja pode receber candidaturas. Convide mentores e mentorados na lateral.");
 }
 
 async function ownProject(id: number, userId: number): Promise<Project | null> {
@@ -187,7 +187,7 @@ export async function grantProjectAccess(formData: FormData) {
   const mentorId = Number(formData.get("mentor_id"));
   const ret = `/projetos/${id}`;
   const project = await ownProject(id, user.id);
-  if (!project || project.kind !== "particular") back("/projetos", "error", "Projeto particular nao encontrado.");
+  if (!project) back("/projetos", "error", "Projeto nao encontrado.");
   const linked = await getDb()
     .prepare(
       `SELECT u.id, u.name FROM mentorships m JOIN users u ON u.id = m.mentor_id
@@ -203,7 +203,7 @@ export async function grantProjectAccess(formData: FormData) {
     .run(id, mentorId);
   await audit(user.id, "project.access_granted", "project", id);
   await alertAdmin(`Nova conexao: ${user.name} compartilhou o projeto "${project!.title}" com ${linked!.name}`);
-  await notify(mentorId, `${user.name} compartilhou o projeto particular "${project!.title}" com voce.`, ret);
+  await notify(mentorId, `${user.name} compartilhou o projeto "${project!.title}" com voce.`, ret);
   back(ret, "msg", `${linked!.name} agora pode ver e comentar este projeto.`);
 }
 
@@ -261,7 +261,6 @@ export async function inviteProjectMember(formData: FormData) {
   const ret = `/projetos/${id}`;
   const project = await ownProject(id, user.id);
   if (!project) back("/projetos", "error", "Projeto nao encontrado.");
-  if (project!.kind === "particular") back(ret, "error", "Projetos particulares nao recebem participantes. Crie um projeto educacional ou open source.");
   const db = getDb();
   const member = (await db.prepare("SELECT id, name FROM users WHERE id = ? AND role = 'mentee' AND account_status = 'active'").get(memberId)) as { id: number; name: string } | undefined;
   if (!member || member.id === user.id) back(ret, "error", "Escolha um mentorado para convidar.");
@@ -327,8 +326,7 @@ export async function applyToProject(formData: FormData) {
   if (!view) back("/projetos", "error", "Projeto nao encontrado.");
   const p = view!.project;
   if (view!.isOwner) back(ret, "error", "Voce e o responsavel por este projeto.");
-  if (p.kind === "particular" || p.status !== "aberto") back(ret, "error", "Este projeto nao esta recebendo inscricoes.");
-  if (user.role === "company") back(ret, "error", "Empresas podem publicar projetos proprios, mas nao se inscrever.");
+  if (p.status !== "aberto") back(ret, "error", "Este projeto nao esta recebendo inscricoes.");
   if (p.slots !== null && view!.participants.length >= p.slots) back(ret, "error", "Todas as vagas deste projeto ja foram preenchidas.");
   const message = str(formData, "message", 1000);
   const existing = await getDb().prepare("SELECT status FROM project_applications WHERE project_id = ? AND user_id = ?").get(id, user.id) as { status: string } | undefined;
@@ -341,6 +339,7 @@ export async function applyToProject(formData: FormData) {
     .run(id, user.id, message);
   await alertAdmin(`Nova candidatura: ${user.name} se candidatou ao projeto "${p.title}"`);
   await notify(p.owner_id, `${user.name} se candidatou ao projeto "${p.title}".`, ret);
+  await emailUser(p.owner_id, `${user.name} se candidatou ao seu projeto`, `${user.name} (${ROLE_PT[user.role] ?? user.role}) se candidatou ao projeto "${p.title}" na Ponte.${message ? ` Mensagem: "${message}"` : ""} Entre no site para aceitar ou recusar.`, "Ver candidatura", ret);
   back(ret, "msg", "Candidatura enviada. Voce sera avisado(a) quando o responsavel responder.");
 }
 

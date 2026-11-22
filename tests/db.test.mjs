@@ -46,31 +46,21 @@ test("perfil salvo e persistido e pode ser editado", async () => {
   assert.equal((await db.getProfile(joao)).weeklyHours, "Mais de 10 horas");
 });
 
-test("projeto particular nao aparece na busca publica", async () => {
+test("todos os projetos aparecem na busca publica", async () => {
   const list = await projects.listPublicProjects();
-  assert.ok(list.length >= 3);
-  assert.ok(list.every((p) => p.kind !== "particular"));
+  assert.ok(list.length >= 4);
+  assert.ok(list.some((p) => p.kind === "particular"));
   assert.ok((await projects.listPublicProjects({ kind: "empresarial" })).every((p) => p.kind === "empresarial"));
   assert.ok((await projects.listPublicProjects({ tool: "Machine Learning" })).length >= 1);
 });
 
-test("projeto particular: dono e mentor autorizado acessam; empresa, outro mentor e outro mentorado nao", async () => {
+test("projeto pessoal: mentores, mentorados, empresas e visitantes acessam", async () => {
   const p = await one("SELECT id FROM projects WHERE kind = 'particular'");
-  assert.ok(await projects.getProjectForViewer(p.id, await user("maria@email.com")));
-  assert.ok(await projects.getProjectForViewer(p.id, await user("carlos@ponte.dev")));
-  assert.equal(await projects.getProjectForViewer(p.id, await user("ana@ponte.dev")), null);
-  assert.equal(await projects.getProjectForViewer(p.id, await user("contato@techcorp.dev")), null);
-  assert.equal(await projects.getProjectForViewer(p.id, await user("pedro@email.com")), null);
-  assert.equal(await projects.getProjectForViewer(p.id, null), null);
+  for (const email of ["maria@email.com", "carlos@ponte.dev", "ana@ponte.dev", "contato@techcorp.dev", "pedro@email.com"]) {
+    assert.ok(await projects.getProjectForViewer(p.id, await user(email)), email);
+  }
+  assert.ok(await projects.getProjectForViewer(p.id, null));
   assert.equal((await projects.listSharedWithMentor(await id("carlos@ponte.dev"))).length, 1);
-});
-
-test("revogar acesso remove a visibilidade imediatamente", async () => {
-  const p = await one("SELECT id FROM projects WHERE kind = 'particular'");
-  const carlos = await id("carlos@ponte.dev");
-  await db.getDb().prepare("UPDATE project_access SET revoked_at = datetime('now') WHERE project_id = ? AND mentor_id = ?").run(p.id, carlos);
-  assert.equal(await projects.getProjectForViewer(p.id, await user("carlos@ponte.dev")), null);
-  assert.equal((await projects.listSharedWithMentor(carlos)).length, 0);
 });
 
 test("candidaturas e participantes de projetos", async () => {

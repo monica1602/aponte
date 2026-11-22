@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db";
 import { getProjectForViewer } from "@/lib/projects";
 import { PROJECT_KINDS, PROJECT_STATUS } from "@/lib/catalog";
 import {
-  addProjectFeedback, applyToProject, cancelApplication, deleteProject, grantProjectAccess, inviteProjectMember, inviteProjectMentor, reviewApplication, revokeProjectAccess, updateProjectStatus,
+  addProjectFeedback, applyToProject, cancelApplication, deleteProject, inviteProjectMember, inviteProjectMentor, reviewApplication, revokeProjectAccess, updateProjectStatus,
 } from "@/lib/edu-actions";
 import { DeleteConfirm } from "@/components/delete-confirm";
 import { Badge, Card, Empty, Flash, ROLE_LABELS, SkillChips, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
@@ -44,12 +44,6 @@ export default async function ProjetoPage({
   const myApplication = user && !isOwner
     ? (await db.prepare("SELECT status FROM project_applications WHERE project_id = ? AND user_id = ?").get(p.id, user.id) as { status: string } | undefined)
     : undefined;
-  const linkedMentors = isOwner && p.kind === "particular"
-    ? (await db.prepare(
-        `SELECT u.id, u.name FROM mentorships m JOIN users u ON u.id = m.mentor_id
-         WHERE m.mentee_id = ? AND m.status = 'active' AND u.role = 'mentor' ORDER BY u.name`
-      ).all(user!.id) as unknown as { id: number; name: string }[]).filter((m) => !grantedMentors.some((g) => g.id === m.id))
-    : [];
   const full = p.slots !== null && participants.length >= p.slots;
   const pendingMentorInvites = isOwner
     ? (await db.prepare(
@@ -67,7 +61,7 @@ export default async function ProjetoPage({
         `SELECT u.id, u.name FROM project_member_invites i JOIN users u ON u.id = i.user_id WHERE i.project_id = ? ORDER BY u.name`
       ).all(p.id) as unknown as { id: number; name: string }[])
     : [];
-  const invitableMembers = isOwner && p.kind !== "particular"
+  const invitableMembers = isOwner
     ? (await db.prepare(
         `SELECT id, name, headline FROM users WHERE role = 'mentee' AND account_status = 'active' AND id != ?
            AND id NOT IN (SELECT user_id FROM project_applications WHERE project_id = ? AND status = 'accepted') ORDER BY name`
@@ -84,7 +78,6 @@ export default async function ProjetoPage({
           <div className="flex flex-wrap gap-1.5">
             <Badge kind={p.kind === "open_source" ? "open_source" : "projeto"} label={PROJECT_KINDS[p.kind]} />
             <Badge kind={p.status === "aberto" ? "active" : "pending"} label={PROJECT_STATUS[p.status as keyof typeof PROJECT_STATUS] ?? p.status} />
-            {p.kind === "particular" && <Badge kind="requested" label="Privado" />}
           </div>
           <h1 className="mt-3 text-3xl font-bold tracking-tight">{p.title}</h1>
           <p className="mt-2 text-sm text-muted">
@@ -130,7 +123,7 @@ export default async function ProjetoPage({
           {p.repo_url && <a href={externalHref(p.repo_url)} target="_blank" rel="noreferrer" className="block text-accent hover:underline">Repositorio ↗</a>}
         </Card>
 
-        {!isOwner && p.kind !== "particular" && (
+        {!isOwner && (
           <Card>
             {!user ? (
               <Link href="/login" className={`${btnCls} w-full`}>Entre para participar</Link>
@@ -143,8 +136,6 @@ export default async function ProjetoPage({
               <p className="text-sm text-muted">Sua candidatura nao foi aceita desta vez.</p>
             ) : p.status !== "aberto" || full ? (
               <p className="text-sm text-muted">{full ? "Vagas preenchidas." : "Este projeto nao esta recebendo inscricoes."}</p>
-            ) : user.role === "company" ? (
-              <p className="text-sm text-muted">Empresas podem publicar projetos, mas nao se inscrever.</p>
             ) : (
               <form action={applyToProject} className="space-y-2">
                 <input type="hidden" name="project_id" value={p.id} />
@@ -166,9 +157,7 @@ export default async function ProjetoPage({
               </select>
               <button className={btnSecondaryCls}>Salvar</button>
             </form>
-            {p.kind !== "particular" && (
-              <Link href={`/talentos?projeto=${p.id}`} className="block text-sm text-accent hover:underline">Buscar mentorados compativeis →</Link>
-            )}
+            <Link href={`/talentos?projeto=${p.id}`} className="block text-sm text-accent hover:underline">Buscar mentorados compativeis →</Link>
             <DeleteConfirm action={deleteProject} fields={{ project_id: p.id, return: `/projetos/${p.id}` }} label="Excluir projeto">
               O projeto, as candidaturas, os comentarios e os acessos de mentores serao apagados. Quem participa recebe um aviso.
             </DeleteConfirm>
@@ -179,8 +168,16 @@ export default async function ProjetoPage({
           <Card className="space-y-3">
             <h2 className="font-semibold">Convidar mentores para ajudar</h2>
             <p className="text-xs text-muted">O mentor recebe um aviso e um e-mail e escolhe se aceita. Quem aceitar pode ver e comentar o projeto.</p>
-            {p.kind !== "particular" && grantedMentors.length > 0 && (
-              <ul className="space-y-1 text-sm">{grantedMentors.map((m) => <li key={m.id} className="flex items-center justify-between gap-2">{m.name} <Badge kind="active" label="Ajudando" /></li>)}</ul>
+            {grantedMentors.length > 0 && (
+              <ul className="space-y-1 text-sm">{grantedMentors.map((m) => (
+                <li key={m.id} className="flex items-center justify-between gap-2">
+                  <span>{m.name} <Badge kind="active" label="Ajudando" /></span>
+                  <form action={revokeProjectAccess}>
+                    <input type="hidden" name="project_id" value={p.id} /><input type="hidden" name="mentor_id" value={m.id} />
+                    <button className="text-xs text-red-300 hover:underline">Remover</button>
+                  </form>
+                </li>
+              ))}</ul>
             )}
             {pendingMentorInvites.length > 0 && (
               <ul className="space-y-1 text-sm">{pendingMentorInvites.map((m) => <li key={m.id} className="flex items-center justify-between gap-2">{m.name} <Badge kind="pending" label="Convite enviado" /></li>)}</ul>
@@ -205,10 +202,7 @@ export default async function ProjetoPage({
         {isOwner && (
           <Card className="space-y-3">
             <h2 className="font-semibold">Convidar mentorados para participar</h2>
-            {p.kind === "particular" ? (
-              <p className="text-xs text-muted">Projetos particulares ficam visiveis so para voce e seus mentores. Para trabalhar com outros mentorados, crie um projeto educacional ou open source.</p>
-            ) : (
-              <>
+            <>
                 <p className="text-xs text-muted">A pessoa recebe um aviso e um e-mail e escolhe se aceita. Quem aceitar entra como participante.</p>
                 {pendingMemberInvites.length > 0 && (
                   <ul className="space-y-1 text-sm">{pendingMemberInvites.map((m) => <li key={m.id} className="flex items-center justify-between gap-2">{m.name} <Badge kind="pending" label="Convite enviado" /></li>)}</ul>
@@ -227,43 +221,12 @@ export default async function ProjetoPage({
                   <p className="text-xs text-muted">Todos os mentorados disponiveis ja foram convidados ou participam.</p>
                 )}
                 <Link href="/talentos" className="block text-sm text-accent hover:underline">Ver perfis dos mentorados →</Link>
-              </>
-            )}
+            </>
           </Card>
         )}
 
-        {isOwner && p.kind === "particular" && (
-          <Card className="space-y-3">
-            <h2 className="font-semibold">Mentores com acesso</h2>
-            <p className="text-xs text-muted">Somente mentores autorizados veem este projeto. Remover o acesso tem efeito imediato.</p>
-            {grantedMentors.length === 0 && <Empty>Nenhum mentor autorizado.</Empty>}
-            <ul className="space-y-2">
-              {grantedMentors.map((m) => (
-                <li key={m.id} className="flex items-center justify-between gap-2 text-sm">
-                  {m.name}
-                  <form action={revokeProjectAccess}>
-                    <input type="hidden" name="project_id" value={p.id} /><input type="hidden" name="mentor_id" value={m.id} />
-                    <button className="text-xs text-red-300 hover:underline">Remover acesso</button>
-                  </form>
-                </li>
-              ))}
-            </ul>
-            {linkedMentors.length > 0 ? (
-              <form action={grantProjectAccess} className="flex gap-2">
-                <input type="hidden" name="project_id" value={p.id} />
-                <label className="sr-only" htmlFor="mentor">Mentor</label>
-                <select id="mentor" name="mentor_id" className={inputCls}>
-                  {linkedMentors.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-                <button className={btnSecondaryCls}>Autorizar</button>
-              </form>
-            ) : (
-              <p className="text-xs text-muted">Para autorizar outro mentor, primeiro tenha uma mentoria ativa com ele.</p>
-            )}
-          </Card>
-        )}
 
-        {isOwner && p.kind !== "particular" && (
+        {isOwner && (
           <Card className="space-y-3">
             <h2 className="font-semibold">Candidaturas ({applications.length})</h2>
             {applications.length === 0 && <Empty>Nenhuma candidatura pendente.</Empty>}

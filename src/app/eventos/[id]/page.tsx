@@ -31,7 +31,7 @@ export default async function EventoPage({
     )
     .get(Number(id)) as (PlatformEvent & { owner_name: string; approved: number }) | undefined;
   if (!e) notFound();
-  const registration = user?.role === "mentee"
+  const registration = user
     ? (await db.prepare("SELECT status FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string } | undefined)?.status
     : undefined;
   const full = e.capacity !== null && e.approved >= e.capacity;
@@ -66,8 +66,8 @@ export default async function EventoPage({
       <div className="mt-8">
         {!user ? (
           <Link href="/login" className={btnCls}>Entre para se inscrever</Link>
-        ) : user.role !== "mentee" ? (
-          <p className="text-sm text-muted">A inscricao e feita por mentorados. Organizadores gerenciam inscricoes no painel.</p>
+        ) : e.owner_id === user.id ? (
+          <p className="text-sm text-muted">Voce organiza este evento. Gerencie as inscricoes em Meus eventos.</p>
         ) : registration ? (
           <Badge kind={registration} label={registration === "approved" ? "Inscricao confirmada" : registration === "requested" ? "Aguardando aprovacao" : "Lista de espera"} />
         ) : (

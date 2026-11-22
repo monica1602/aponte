@@ -9,7 +9,7 @@ import { Badge, Card, Empty, PageHeader, SelectField, SkillChips, btnCls, btnSec
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Projetos — Ponte" };
 
-const KIND_OPTIONS = Object.entries(PROJECT_KINDS).filter(([k]) => k !== "particular");
+const KIND_OPTIONS = Object.entries(PROJECT_KINDS);
 
 export default async function ProjetosPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
@@ -29,17 +29,16 @@ export default async function ProjetosPage({ searchParams }: { searchParams: Pro
   return (
     <div className="pb-10">
       <PageHeader eyebrow="Projetos" title="Aprenda construindo">
-        Projetos open source, educacionais e de empresas abertos a participacao. Projetos particulares sao privados:
-        aparecem apenas para o dono e para os mentores autorizados.
+        Projetos pessoais, open source, educacionais e de empresas abertos a participacao de mentores, mentorados e empresas.
       </PageHeader>
       {user && (
         <div className="mb-8 grid gap-4 md:grid-cols-3">
-          <MiniList title="Meus projetos" empty="Voce ainda nao criou projetos." items={mine.map((p) => ({ id: p.id, title: p.title, tag: p.kind === "particular" ? "Privado" : PROJECT_STATUS[p.status as keyof typeof PROJECT_STATUS] }))}>
+          <MiniList title="Meus projetos" empty="Voce ainda nao criou projetos." items={mine.map((p) => ({ id: p.id, title: p.title, tag: PROJECT_STATUS[p.status as keyof typeof PROJECT_STATUS] }))}>
             <Link href="/projetos/novo" className={`${btnCls} mt-3 w-full`}>Criar projeto</Link>
           </MiniList>
           <MiniList title="Participando" empty="Nenhuma candidatura ainda." items={participating.map((p) => ({ id: p.id, title: p.title, tag: p.application_status === "accepted" ? "Participante" : "Aguardando" }))} />
           {user.role === "mentor" && (
-            <MiniList title="Compartilhados comigo" empty="Nenhum mentorado compartilhou projetos particulares." items={shared.map((p) => ({ id: p.id, title: p.title, tag: p.owner_name }))} />
+            <MiniList title="Ajudando" empty="Voce ainda nao ajuda em projetos de mentorados." items={shared.map((p) => ({ id: p.id, title: p.title, tag: p.owner_name }))} />
           )}
         </div>
       )}

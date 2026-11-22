@@ -110,7 +110,7 @@ export type DashboardData = {
   areas: { label: string; value: number }[];
 };
 
-const KIND: Record<string, string> = { particular: "Particular", open_source: "Open source", educacional: "Educacional", empresarial: "Empresarial" };
+const KIND: Record<string, string> = { particular: "Pessoal", open_source: "Open source", educacional: "Educacional", empresarial: "Empresarial" };
 const STATUS: Record<string, string> = PROJECT_STATUS;
 
 function tally(values: string[]): { label: string; value: number }[] {

@@ -15,7 +15,7 @@ const KINDS_BY_ROLE: Record<string, (keyof typeof PROJECT_KINDS)[]> = {
 };
 
 const KIND_HELP: Record<string, string> = {
-  particular: "Privado: so voce e os mentores que autorizar podem ver. Nao aparece em buscas.",
+  particular: "Seu projeto de portfolio. Aparece para todos e recebe candidaturas.",
   open_source: "Publico, com repositorio aberto. Qualquer pessoa pode se candidatar.",
   educacional: "Projeto guiado para aprendizado em grupo.",
   empresarial: "Projeto real da empresa para formar talentos.",
@@ -63,9 +63,6 @@ export default async function NovoProjetoPage({ searchParams }: { searchParams: 
             <Field label="Vagas (opcional)"><input name="slots" type="number" min={1} max={500} className={inputCls} /></Field>
           </div>
           <Field label="Repositorio (obrigatorio para open source)"><input name="repo_url" type="text" inputMode="url" placeholder="github.com/usuario/projeto" className={inputCls} /></Field>
-          {user.role !== "mentee" && (
-            <label className="flex items-center gap-2 text-sm text-muted"><input type="checkbox" name="visibility" value="invite" /> Visivel apenas para participantes aceitos (nao aparece na busca publica)</label>
-          )}
           <label className="flex items-center gap-2 text-sm text-muted"><input type="checkbox" name="draft" /> Salvar como rascunho</label>
         </Card>
         <button className={`${btnCls} w-full sm:w-auto`}>Criar projeto</button>

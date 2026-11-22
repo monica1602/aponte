@@ -285,7 +285,7 @@ export type ProjectAccessInput = {
 export type Viewer = { id: number; role: string } | null;
 
 export function isPubliclyListed(p: ProjectAccessInput): boolean {
-  return p.kind !== "particular" && p.visibility === "public" && p.status !== "rascunho" && p.status !== "arquivado";
+  return p.visibility === "public" && p.status !== "rascunho" && p.status !== "arquivado";
 }
 
 export function canViewProject(
@@ -294,9 +294,6 @@ export function canViewProject(
   ctx: { grantedMentorIds: number[]; participantIds: number[] }
 ): boolean {
   if (viewer && viewer.id === p.ownerId) return true;
-  if (p.kind === "particular") {
-    return !!viewer && viewer.role === "mentor" && ctx.grantedMentorIds.includes(viewer.id);
-  }
   if (isPubliclyListed(p)) return true;
   if (p.status === "rascunho") return false;
   return !!viewer && ctx.participantIds.includes(viewer.id);

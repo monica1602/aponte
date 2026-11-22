@@ -17,7 +17,7 @@ export default function SouEmpresaPage() {
           { title: "Projetos empresariais", description: "Descricao, objetivos, ferramentas, nivel, carga horaria, vagas e tipo de oportunidade." },
           { title: "Busca de mentorados", description: "Compatibilidade por ferramentas, tipo de projeto, nivel, objetivos de aprendizado, disponibilidade e modalidade." },
           { title: "Gestao de candidaturas", description: "Aceite ou recuse candidaturas; os mentorados recebem uma notificacao." },
-          { title: "Privacidade respeitada", description: "Empresas nunca acessam projetos particulares dos mentorados." },
+          { title: "Projetos abertos", description: "Veja todos os projetos da comunidade e candidate-se aos que combinam com sua empresa." },
           { title: "Eventos", description: "Organize eventos para apresentar projetos e conhecer talentos." },
         ],
         journey: ["Cadastro", "Projeto", "Busca de mentorados", "Candidaturas", "Acompanhamento"],
