@@ -7,6 +7,7 @@ import { getDb, getProfile, profileCompleteness } from "@/lib/db";
 import { isTemporaryDatabase } from "@/lib/sql";
 import { Suspense } from "react";
 import { MobileMenuCloser } from "@/components/mobile-menu-closer";
+import { FormKeeper } from "@/components/form-keeper";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
@@ -203,6 +204,7 @@ export default async function RootLayout({
         <Suspense fallback={null}>
           <MobileMenuCloser targetId="menu-mobile" />
           <MobileMenuCloser targetId="menu-usuario" />
+          <FormKeeper />
         </Suspense>
         <main id="conteudo" className="mx-auto max-w-6xl px-5">{children}</main>
         <footer className="mt-24 border-t border-line">
