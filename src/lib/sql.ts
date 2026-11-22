@@ -101,12 +101,18 @@ function postgresDriver(url: string): Driver {
     },
     async withLock(fn) {
       // Serializes schema creation and seeding across serverless instances.
+      // Transaction-scoped lock: released on COMMIT or disconnect, and safe behind Neon's PgBouncer pooler.
+      // lock_timeout keeps a stuck holder from hanging every new instance.
       const client = await pool.connect();
+      let locked = false;
       try {
-        await client.query("SELECT pg_advisory_lock(727001)");
+        await client.query("BEGIN");
+        await client.query("SET LOCAL lock_timeout = '15s'");
+        locked = await client.query("SELECT pg_advisory_xact_lock(727002)").then(() => true, () => false);
+        if (!locked) console.warn("withLock: lock_timeout, continuing without the lock");
         return await fn();
       } finally {
-        await client.query("SELECT pg_advisory_unlock(727001)").catch(() => {});
+        await client.query(locked ? "COMMIT" : "ROLLBACK").catch(() => {});
         client.release();
       }
     },
