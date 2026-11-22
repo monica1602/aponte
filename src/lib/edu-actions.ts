@@ -159,6 +159,25 @@ export async function updateProjectStatus(formData: FormData) {
   back(ret, "msg", `Status atualizado para "${PROJECT_STATUS[status as keyof typeof PROJECT_STATUS]}".`);
 }
 
+export async function deleteProject(formData: FormData) {
+  const user = await requireUser();
+  const id = Number(formData.get("project_id"));
+  const ret = safeReturn(str(formData, "return"), `/projetos/${id}`);
+  const project = await ownProject(id, user.id);
+  if (!project) back("/meus-projetos", "error", "Projeto nao encontrado ou voce nao e a pessoa responsavel.");
+  if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para excluir o projeto.");
+  const db = getDb();
+  const people = (await db.prepare(
+    `SELECT user_id FROM project_applications WHERE project_id = ? AND status IN ('pending','accepted')
+     UNION SELECT mentor_id FROM project_access WHERE project_id = ? AND revoked_at IS NULL`
+  ).all(id, id)) as unknown as { user_id: number }[];
+  await db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+  for (const p of people) await notify(p.user_id, `O projeto "${project!.title}" foi excluido por ${user.name}.`, "/meus-projetos");
+  await audit(user.id, "project.delete", "project", id);
+  await alertAdmin(`Projeto excluido: "${project!.title}" por ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
+  back("/meus-projetos", "msg", `Projeto "${project!.title}" excluido.`);
+}
+
 export async function grantProjectAccess(formData: FormData) {
   const user = await requireUser();
   const id = Number(formData.get("project_id"));

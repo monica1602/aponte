@@ -545,6 +545,24 @@ export async function createEvent(formData: FormData) {
   back("/dashboard", "msg", "Evento publicado e pronto para receber inscricoes.");
 }
 
+export async function deleteEvent(formData: FormData) {
+  const user = await me();
+  const id = Number(formData.get("event_id"));
+  const ret = str(formData, "return").startsWith("/") ? str(formData, "return") : "/meus-eventos";
+  const db = getDb();
+  const event = (await db.prepare("SELECT id, title FROM events WHERE id = ? AND owner_id = ?").get(id, user.id)) as { id: number; title: string } | undefined;
+  if (!event) back("/meus-eventos", "error", "Evento nao encontrado ou voce nao e quem o cadastrou.");
+  if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para excluir o evento.");
+  const people = (await db.prepare(
+    "SELECT user_id FROM event_registrations WHERE event_id = ? AND status IN ('requested','approved','waitlist')"
+  ).all(id)) as unknown as { user_id: number }[];
+  await db.prepare("DELETE FROM events WHERE id = ?").run(id);
+  for (const p of people) await notify(p.user_id, `O evento "${event!.title}" foi cancelado e excluido pela organizacao.`, "/eventos");
+  await audit(user.id, "event.delete", "event", id);
+  await alertAdmin(`Evento excluido: "${event!.title}" por ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
+  back("/meus-eventos", "msg", `Evento "${event!.title}" excluido.`);
+}
+
 export async function requestEventAccess(formData: FormData) {
   const user = await me();
   if (user.role !== "mentee") back("/eventos", "error", "A inscricao em eventos e destinada a mentorados.");

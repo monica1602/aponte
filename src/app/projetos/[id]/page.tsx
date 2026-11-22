@@ -7,8 +7,9 @@ import { getDb } from "@/lib/db";
 import { getProjectForViewer } from "@/lib/projects";
 import { PROJECT_KINDS, PROJECT_STATUS } from "@/lib/catalog";
 import {
-  addProjectFeedback, applyToProject, cancelApplication, grantProjectAccess, reviewApplication, revokeProjectAccess, updateProjectStatus,
+  addProjectFeedback, applyToProject, cancelApplication, deleteProject, grantProjectAccess, reviewApplication, revokeProjectAccess, updateProjectStatus,
 } from "@/lib/edu-actions";
+import { DeleteConfirm } from "@/components/delete-confirm";
 import { Badge, Card, Empty, Flash, ROLE_LABELS, SkillChips, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -145,6 +146,9 @@ export default async function ProjetoPage({
             {p.kind !== "particular" && (
               <Link href={`/talentos?projeto=${p.id}`} className="block text-sm text-accent hover:underline">Buscar mentorados compativeis →</Link>
             )}
+            <DeleteConfirm action={deleteProject} fields={{ project_id: p.id, return: `/projetos/${p.id}` }} label="Excluir projeto">
+              O projeto, as candidaturas, os comentarios e os acessos de mentores serao apagados. Quem participa recebe um aviso.
+            </DeleteConfirm>
           </Card>
         )}
 

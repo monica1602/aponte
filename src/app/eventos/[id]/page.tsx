@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb, type PlatformEvent } from "@/lib/db";
-import { requestEventAccess } from "@/lib/actions";
+import { deleteEvent, requestEventAccess } from "@/lib/actions";
+import { DeleteConfirm } from "@/components/delete-confirm";
 import { Badge, Card, Flash, btnCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +57,11 @@ export default async function EventoPage({
         <Card><dt className="text-xs text-muted">Inscricao</dt><dd className="mt-1 text-sm">{e.require_approval ? "Sujeita a aprovacao do organizador" : "Confirmacao automatica"}</dd></Card>
       </dl>
       {e.description && <p className="mt-6 whitespace-pre-line leading-relaxed text-fg/85">{e.description}</p>}
+      {user?.id === e.owner_id && (
+        <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: ret }} label="Excluir evento" className="mt-8">
+          O evento e as inscricoes serao apagados. As pessoas inscritas recebem um aviso de cancelamento.
+        </DeleteConfirm>
+      )}
       <div className="mt-8">
         {!user ? (
           <Link href="/login" className={btnCls}>Entre para se inscrever</Link>

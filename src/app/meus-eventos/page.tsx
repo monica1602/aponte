@@ -3,7 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { Badge, Card, Empty, PageHeader, btnSecondaryCls } from "@/components/ui";
+import { DeleteConfirm } from "@/components/delete-confirm";
+import { deleteEvent } from "@/lib/actions";
+import { Badge, Card, Empty, Flash, PageHeader, btnSecondaryCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Meus eventos — Ponte" };
@@ -13,7 +15,8 @@ const STATUS: Record<string, string> = { approved: "Confirmada", requested: "Agu
 type Ev = { id: number; title: string; starts_at: string; modality: string; capacity: number | null };
 type Reg = { event_id: number; name: string; email: string; role: string; status: string; checked_in_at: string | null };
 
-export default async function MeusEventosPage() {
+export default async function MeusEventosPage({ searchParams }: { searchParams: Promise<{ msg?: string; error?: string }> }) {
+  const sp = await searchParams;
   const user = await getSessionUser();
   if (!user) redirect("/login");
   const db = getDb();
@@ -33,6 +36,7 @@ export default async function MeusEventosPage() {
       <PageHeader eyebrow="Minha conta" title={user.role === "mentee" ? "Eventos participantes" : "Meus eventos"}>
         {user.role === "mentee" ? "Eventos em que voce se inscreveu." : "Eventos que voce cadastrou e as pessoas inscritas em cada um."}
       </PageHeader>
+      <Flash params={sp} />
       {user.role !== "mentee" && <Link href="/dashboard" className={`${btnSecondaryCls} mb-6`}>Cadastrar evento no painel</Link>}
       {user.role === "mentee" ? (
         mine.length === 0 ? <Empty>Voce ainda nao se inscreveu em eventos. <Link href="/eventos" className="text-accent underline">Ver eventos</Link></Empty> : (
@@ -73,6 +77,9 @@ export default async function MeusEventosPage() {
                       </table>
                     </div>
                   )}
+                  <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: "/meus-eventos" }} label="Excluir evento" className="mt-4">
+                    O evento e as inscricoes serao apagados. As pessoas inscritas recebem um aviso de cancelamento.
+                  </DeleteConfirm>
                 </Card>
               </li>
             );
