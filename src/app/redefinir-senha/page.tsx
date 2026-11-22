@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PASSWORD_HINT } from "@/lib/password-policy";
+import { resetTokenUser } from "@/lib/reset-token";
 import Link from "next/link";
 import { resetPassword } from "@/lib/password-reset";
 import { Card, Flash, btnCls, inputCls } from "@/components/ui";
@@ -8,13 +9,15 @@ export const metadata: Metadata = { title: "Nova senha — Ponte" };
 
 export default async function RedefinirSenhaPage({ searchParams }: { searchParams: Promise<{ token?: string; error?: string }> }) {
   const sp = await searchParams;
+  const owner = sp.token ? await resetTokenUser(sp.token) : null;
   return (
     <div className="mx-auto max-w-md py-8">
       <Card>
         <h1 className="text-xl font-bold">Criar nova senha</h1>
+        {owner && <p className="mt-2 text-sm text-muted">Pedido confirmado, {owner.name}. Agora crie sua nova senha.</p>}
         <div className="mt-4"><Flash params={{ error: sp.error }} /></div>
-        {!sp.token ? (
-          <p className="text-sm text-muted">Link invalido. <Link href="/esqueci-senha" className="text-accent hover:underline">Peca um novo link</Link>.</p>
+        {!owner ? (
+          <p className="text-sm text-muted">Este link e invalido, expirou ou ja foi usado. <Link href="/esqueci-senha" className="text-accent hover:underline">Peca um novo link</Link>.</p>
         ) : (
           <form action={resetPassword} className="space-y-3">
             <input type="hidden" name="token" value={sp.token} />
