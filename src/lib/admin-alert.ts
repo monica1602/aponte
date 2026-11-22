@@ -12,16 +12,36 @@ async function adminUrl(): Promise<string> {
   return `${proto}://${host}/admin`;
 }
 
-/** Avisa o administrador no WhatsApp sem atrasar a resposta. Envia so nomes, nunca e-mails ou dados pessoais. */
+async function sendAdminEmail(to: string, text: string, link: string): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return;
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const res = await fetch(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: process.env.EMAIL_FROM ?? "Ponte <onboarding@resend.dev>",
+      to: [to],
+      subject: `Ponte: ${text}`.slice(0, 150),
+      html: `<p>${esc(text)}</p><p><a href="${esc(link)}">Abrir a administracao</a></p>`,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) console.warn(`[aviso-admin] Resend respondeu ${res.status}`);
+}
+
+/** Avisa o administrador (WhatsApp e/ou e-mail) sem atrasar a resposta. Envia so nomes, nunca e-mails ou dados pessoais. */
 export async function alertAdmin(text: string): Promise<void> {
-  const cfg = whatsappConfig();
-  if (!cfg) return;
-  const message = `Ponte: ${text}\nVer: ${await adminUrl()}`;
+  const wa = whatsappConfig();
+  const email = (process.env.ADMIN_ALERT_EMAIL ?? "").trim();
+  if (!wa && !(email && process.env.RESEND_API_KEY)) return;
+  const link = await adminUrl();
   after(async () => {
-    try {
-      await sendWhatsApp(cfg, message);
-    } catch (e) {
-      console.warn("[whatsapp] falha ao enviar aviso:", (e as Error).message);
+    const jobs: Promise<unknown>[] = [];
+    if (wa) jobs.push(sendWhatsApp(wa, `Ponte: ${text}\nVer: ${link}`));
+    if (email) jobs.push(sendAdminEmail(email, text, link));
+    for (const r of await Promise.allSettled(jobs)) {
+      if (r.status === "rejected") console.warn("[aviso-admin] falha ao enviar:", (r.reason as Error)?.message);
     }
   });
 }

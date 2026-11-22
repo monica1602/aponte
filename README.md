@@ -220,6 +220,7 @@ Na Vercel o banco precisa ser PostgreSQL: o disco das funcoes serverless e tempo
    Para avisar o administrador no WhatsApp (novos cadastros, mentorias, convites, candidaturas,
    projetos e atualizacoes de perfil), cadastre `ADMIN_WHATSAPP` (numero com DDI, ex.: `5511999999999`)
    e `CALLMEBOT_API_KEY` (chave gratuita do CallMeBot). As mensagens levam so nomes, sem e-mails.
+   Os mesmos avisos vao por e-mail para `ADMIN_ALERT_EMAIL` quando `RESEND_API_KEY` estiver configurada.
 5. Faca o deploy (ou **Redeploy** apos criar o banco). As tabelas e os dados de demo sao
    criados no primeiro acesso.
 5. Para login com Google, adicione `https://SEU-DOMINIO/auth/google/callback` como URI de
