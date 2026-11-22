@@ -26,6 +26,14 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
         `SELECT m.id AS mid, u.id, u.name, u.role, u.headline, u.email, m.status, m.objective, m.message, m.requested_by FROM mentorships m
          JOIN users u ON u.id = m.mentee_id WHERE m.mentor_id = ? ORDER BY m.status, u.name`
       ).all(user.id)) as unknown as Person[];
+  if (user.role === "company") {
+    const role = tab === "mentores" ? "mentor" : "mentee";
+    const linked = (await db.prepare(
+      `SELECT l.id AS mid, u.id, u.name, u.role, u.headline, u.email, l.status, '' AS objective, l.message, 'company' AS requested_by FROM company_links l
+       JOIN users u ON u.id = l.member_id WHERE l.company_id = ? AND u.role = ? ORDER BY l.status, u.name`
+    ).all(user.id, role)) as unknown as Person[];
+    people.push(...linked.filter((l) => people.every((p) => p.id !== l.id)));
+  }
   const tabs = [
     { key: "mentores", label: "Mentores" },
     { key: "mentorados", label: "Mentorados" },
@@ -35,7 +43,7 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
       <PageHeader eyebrow="Minha conta" title="Minha rede" />
       <Flash params={sp} />
       <div className="mb-4">
-        {tab === "mentorados" && user.role === "mentor" && <Link href="/talentos" className={btnCls}>Buscar mentorados</Link>}
+        {tab === "mentorados" && user.role !== "mentee" && <Link href="/talentos" className={btnCls}>Buscar mentorados</Link>}
         {tab === "mentores" && user.role !== "mentor" && <Link href="/mentores" className={btnCls}>Buscar mentores</Link>}
       </div>
       <div role="tablist" className="mb-6 flex gap-2 border-b border-line">
@@ -62,7 +70,7 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
                     <Link href={`/pessoas/${p.id}`} className="font-semibold text-accent hover:underline">{p.name}</Link>
                     <p className="text-xs text-muted">{ROLE_LABELS[p.role]} · {p.email}</p>
                   </div>
-                  <Badge kind={p.status} label={p.status === "active" ? "Ativa" : p.requested_by === "mentor" ? (tab === "mentores" ? "Convite recebido" : "Convite enviado") : "Pendente"} />
+                  <Badge kind={p.status} label={p.status === "active" ? "Ativa" : p.requested_by === "company" ? "Convite enviado" : p.requested_by === "mentor" ? (tab === "mentores" ? "Convite recebido" : "Convite enviado") : "Pendente"} />
                 </div>
                 {p.headline && <p className="mt-2 text-sm text-muted">{p.headline}</p>}
                 {p.objective && <p className="mt-2 text-xs text-muted">Objetivo: {p.objective}</p>}

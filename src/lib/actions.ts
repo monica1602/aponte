@@ -13,6 +13,7 @@ import {
 } from "./auth";
 import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
+import { emailUser } from "./user-email";
 
 async function nameOf(id: number): Promise<string> {
   const r = (await getDb().prepare("SELECT name FROM users WHERE id = ?").get(id)) as { name: string } | undefined;
@@ -273,6 +274,7 @@ export async function requestMentorship(formData: FormData) {
     back(ret, "error", "Voce ja possui uma solicitacao com este mentor.");
   }
   await notify(mentorId, `${user.name} pediu sua mentoria.`, "/dashboard");
+  await emailUser(mentorId, `${user.name} pediu sua mentoria`, `${user.name} quer fazer parte da sua rede e pediu sua mentoria. Entre na Ponte para aceitar ou recusar.`, "Ver pedido", "/dashboard");
   await alertAdmin(`Novo pedido de mentoria: ${user.name} pediu mentoria a ${await nameOf(mentorId)}`);
   back(ret, "msg", "Solicitacao de mentoria enviada. Voce sera avisado(a) quando o mentor responder.");
 }
@@ -319,6 +321,7 @@ export async function inviteMentee(formData: FormData) {
   }
   await alertAdmin(`Novo convite de mentoria: ${user.name} convidou ${await nameOf(menteeId)}`);
   await notify(menteeId, `${user.name} convidou voce para uma mentoria. Aceite ou recuse em Mentores.`, "/minha-rede?aba=mentores");
+  await emailUser(menteeId, `${user.name} convidou voce para uma mentoria`, `${user.name} convidou voce para fazer parte da rede de mentoria na Ponte. Entre no site para aceitar ou recusar o convite.`, "Ver convite", "/minha-rede?aba=mentores");
   back(ret, "msg", "Convite enviado. O mentorado sera avisado e podera aceitar ou recusar.");
 }
 
@@ -344,6 +347,52 @@ export async function respondMentorInvite(formData: FormData) {
     "/minha-rede?aba=mentorados"
   );
   back(ret, "msg", accept ? "Convite aceito. A mentoria esta ativa." : "Convite recusado.");
+}
+
+export async function inviteToCompany(formData: FormData) {
+  const user = await me();
+  const memberId = Number(formData.get("member_id"));
+  const ret = str(formData, "return") || `/pessoas/${memberId}`;
+  if (user.role !== "company") back(ret, "error", "Apenas empresas enviam este convite.");
+  const member = (await getDb()
+    .prepare("SELECT id, role FROM users WHERE id = ? AND role IN ('mentor','mentee') AND account_status = 'active'")
+    .get(memberId)) as { id: number; role: string } | undefined;
+  if (!member) back(ret, "error", "Pessoa nao encontrada.");
+  try {
+    await getDb()
+      .prepare("INSERT INTO company_links (company_id, member_id, message) VALUES (?,?,?)")
+      .run(user.id, memberId, str(formData, "message").slice(0, 1000));
+  } catch {
+    back(ret, "error", "Esta pessoa ja faz parte da sua rede ou ja tem um convite seu.");
+  }
+  await notify(memberId, `${user.name} convidou voce para fazer parte da rede da empresa. Aceite ou recuse em Empresas.`, "/empresas");
+  await emailUser(memberId, `${user.name} convidou voce para a rede da empresa`, `A empresa ${user.name} enviou uma proposta para voce fazer parte da rede dela na Ponte. Entre no site para aceitar ou recusar.`, "Ver proposta", "/empresas");
+  await alertAdmin(`Novo convite de empresa: ${user.name} convidou ${await nameOf(memberId)} (${ROLE_PT[member!.role]})`);
+  back(ret, "msg", "Convite enviado. A pessoa recebe um aviso e um e-mail e pode aceitar ou recusar.");
+}
+
+export async function respondCompanyInvite(formData: FormData) {
+  const user = await me();
+  const ret = "/empresas";
+  const id = Number(formData.get("id"));
+  const accept = str(formData, "decision") === "accept";
+  const db = getDb();
+  const inv = (await db
+    .prepare("SELECT id, company_id FROM company_links WHERE id = ? AND member_id = ? AND status = 'pending'")
+    .get(id, user.id)) as { id: number; company_id: number } | undefined;
+  if (!inv) back(ret, "error", "Convite nao encontrado.");
+  if (accept) {
+    await db.prepare("UPDATE company_links SET status = 'active' WHERE id = ?").run(id);
+    await alertAdmin(`Nova conexao com empresa: ${user.name} aceitou o convite de ${await nameOf(inv!.company_id)}`);
+  } else {
+    await db.prepare("DELETE FROM company_links WHERE id = ?").run(id);
+  }
+  await notify(
+    inv!.company_id,
+    accept ? `${user.name} aceitou fazer parte da rede da empresa.` : `${user.name} recusou o convite da empresa.`,
+    `/minha-rede?aba=${user.role === "mentor" ? "mentores" : "mentorados"}`
+  );
+  back(ret, "msg", accept ? "Convite aceito. Voce agora faz parte da rede da empresa." : "Convite recusado.");
 }
 
 export async function removeMentorship(formData: FormData) {

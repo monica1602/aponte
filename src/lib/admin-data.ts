@@ -15,6 +15,7 @@ type M = { mentor_id: number; mentee_id: number; status: string; created_at: str
 type P = { id: number; owner_id: number; title: string; kind: string; status: string; tools: string; created_at: string };
 type A = { project_id: number; user_id: number; status: string };
 type X = { project_id: number; mentor_id: number };
+type L = { company_id: number; member_id: number; status: string };
 
 function uniq(list: Ref[]): Ref[] {
   const seen = new Set<number>();
@@ -23,13 +24,14 @@ function uniq(list: Ref[]): Ref[] {
 
 async function load() {
   const db = getDb();
-  const [users, ms, projects, apps, access, profiles] = await Promise.all([
+  const [users, ms, projects, apps, access, profiles, links] = await Promise.all([
     db.prepare("SELECT id, name, email, role, account_status, headline, created_at FROM users ORDER BY name").all(),
     db.prepare("SELECT mentor_id, mentee_id, status, created_at FROM mentorships").all(),
     db.prepare("SELECT id, owner_id, title, kind, status, tools, created_at FROM projects").all(),
     db.prepare("SELECT project_id, user_id, status FROM project_applications WHERE status IN ('pending','accepted')").all(),
     db.prepare("SELECT project_id, mentor_id FROM project_access WHERE revoked_at IS NULL").all(),
     db.prepare("SELECT user_id, data FROM profiles").all(),
+    db.prepare("SELECT company_id, member_id, status FROM company_links").all(),
   ]);
   const prof = new Map<number, Profile>();
   for (const r of profiles as { user_id: number; data: string }[]) {
@@ -41,12 +43,13 @@ async function load() {
     projects: (projects as unknown as P[]).map((p) => ({ ...p, id: Number(p.id), owner_id: Number(p.owner_id) })),
     apps: (apps as unknown as A[]).map((a) => ({ ...a, project_id: Number(a.project_id), user_id: Number(a.user_id) })),
     access: (access as unknown as X[]).map((a) => ({ project_id: Number(a.project_id), mentor_id: Number(a.mentor_id) })),
+    links: (links as unknown as L[]).map((l) => ({ ...l, company_id: Number(l.company_id), member_id: Number(l.member_id) })),
     prof,
   };
 }
 
 export async function listPeople(role?: Role): Promise<PersonRow[]> {
-  const { users, ms, projects, apps, access, prof } = await load();
+  const { users, ms, projects, apps, access, links, prof } = await load();
   const byId = new Map(users.map((u) => [u.id, u]));
   const projById = new Map(projects.map((p) => [p.id, p]));
   const ref = (id: number, extra?: string): Ref => ({ id, name: byId.get(id)?.name ?? "?", role: byId.get(id)?.role, extra });
@@ -79,11 +82,18 @@ export async function listPeople(role?: Role): Promise<PersonRow[]> {
         profile: prof.get(u.id) ?? {},
         mentors: asMentee.filter((m) => byId.get(m.mentor_id)?.role === "mentor").map((m) => ref(m.mentor_id, st(m.status))),
         mentees: asMentor.map((m) => ref(m.mentee_id, st(m.status))),
-        companies: uniq([...companyMentors, ...companyFromProjects].map((id) => ref(id))),
+        companies: uniq([
+          ...links.filter((l) => l.member_id === u.id).map((l) => ref(l.company_id, `rede ${st(l.status)}`)),
+          ...[...companyMentors, ...companyFromProjects].map((id) => ref(id)),
+        ]),
         projects: projectsList,
         jointProjects: joint,
-        mentorsLinked: uniq(applicants.filter((id) => byId.get(id)?.role === "mentor").map((id) => ref(id, "projeto"))),
+        mentorsLinked: uniq([
+          ...links.filter((l) => l.company_id === u.id && byId.get(l.member_id)?.role === "mentor").map((l) => ref(l.member_id, `rede ${st(l.status)}`)),
+          ...applicants.filter((id) => byId.get(id)?.role === "mentor").map((id) => ref(id, "projeto")),
+        ]),
         menteesLinked: uniq([
+          ...links.filter((l) => l.company_id === u.id && byId.get(l.member_id)?.role === "mentee").map((l) => ref(l.member_id, `rede ${st(l.status)}`)),
           ...asMentor.map((m) => ref(m.mentee_id, `mentoria ${st(m.status)}`)),
           ...applicants.filter((id) => byId.get(id)?.role === "mentee").map((id) => ref(id, "projeto")),
         ]),

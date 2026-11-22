@@ -2,15 +2,27 @@ import { bareUrl, externalHref } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getDb, getProfile } from "@/lib/db";
-import { Badge, Card, Empty, PageHeader } from "@/components/ui";
+import { getSessionUser } from "@/lib/auth";
+import { respondCompanyInvite } from "@/lib/actions";
+import { Badge, Card, Empty, Flash, PageHeader, btnCls, btnSecondaryCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Empresas — Ponte" };
 
 type Company = { id: number; name: string; headline: string; projects: number; events: number };
 
-export default async function EmpresasPage() {
+type CompanyLink = { id: number; company_id: number; name: string; status: string; message: string };
+
+export default async function EmpresasPage({ searchParams }: { searchParams: Promise<{ msg?: string; error?: string }> }) {
+  const sp = await searchParams;
   const db = getDb();
+  const user = await getSessionUser();
+  const links = user && user.role !== "company"
+    ? ((await db.prepare(
+        `SELECT l.id, l.company_id, u.name, l.status, l.message FROM company_links l JOIN users u ON u.id = l.company_id
+         WHERE l.member_id = ? ORDER BY l.status DESC, u.name`
+      ).all(user.id)) as unknown as CompanyLink[])
+    : [];
   const rows = (await db.prepare(
     `SELECT u.id, u.name, u.headline,
        (SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id AND p.kind <> 'particular' AND p.status <> 'rascunho') AS projects,
@@ -23,6 +35,31 @@ export default async function EmpresasPage() {
       <PageHeader eyebrow="Rede" title="Empresas">
         Empresas parceiras que oferecem projetos, eventos e oportunidades para mentores e mentorados.
       </PageHeader>
+      <Flash params={sp} />
+      {links.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 font-semibold">Suas empresas e convites</h2>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {links.map((l) => (
+              <li key={l.id}>
+                <Card>
+                  <div className="flex items-start justify-between gap-2">
+                    <Link href={`/pessoas/${l.company_id}`} className="font-semibold text-accent hover:underline">{l.name}</Link>
+                    <Badge kind={l.status} label={l.status === "active" ? "Na rede da empresa" : "Convite recebido"} />
+                  </div>
+                  {l.message && <p className="mt-2 text-xs text-muted">Mensagem: {l.message}</p>}
+                  {l.status === "pending" && (
+                    <div className="mt-3 flex gap-2">
+                      <form action={respondCompanyInvite}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="decision" value="accept" /><button className={btnCls}>Aceitar</button></form>
+                      <form action={respondCompanyInvite}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="decision" value="decline" /><button className={btnSecondaryCls}>Recusar</button></form>
+                    </div>
+                  )}
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {companies.length === 0 ? <Empty>Nenhuma empresa cadastrada ainda.</Empty> : (
         <ul className="grid gap-4 sm:grid-cols-2">
           {companies.map((c) => (

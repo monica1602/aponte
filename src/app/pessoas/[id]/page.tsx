@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb, getUser } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { requestMentorship, toggleEndorsement } from "@/lib/actions";
-import { Badge, Card, Empty, Flash, SkillChips, TYPE_LABELS, btnCls } from "@/components/ui";
+import { inviteToCompany, requestMentorship, toggleEndorsement } from "@/lib/actions";
+import { Badge, Card, Empty, Flash, SkillChips, TYPE_LABELS, btnCls, inputCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +63,13 @@ export default async function PessoaPage({
   }[];
 
   let myLink: { status: string } | undefined;
+  let companyLink: { status: string } | undefined;
+  const companyCanInvite = viewer?.role === "company" && (profile.role === "mentor" || profile.role === "mentee");
+  if (companyCanInvite) {
+    companyLink = (await db
+      .prepare("SELECT status FROM company_links WHERE company_id = ? AND member_id = ?")
+      .get(viewer!.id, profile.id)) as { status: string } | undefined;
+  }
   let canEndorse = false;
   if (viewer) {
     if (viewer.role === "mentee" && isMentorSide) {
@@ -102,6 +109,19 @@ export default async function PessoaPage({
                 <input type="hidden" name="mentor_id" value={profile.id} />
                 <input type="hidden" name="return" value={ret} />
                 <button className={btnCls}>Solicitar mentoria</button>
+              </form>
+            ))}
+          {companyCanInvite &&
+            (companyLink?.status === "active" ? (
+              <Badge kind="active" label="Na rede da empresa" />
+            ) : companyLink?.status === "pending" ? (
+              <Badge kind="pending" label="Convite enviado" />
+            ) : (
+              <form action={inviteToCompany} className="w-full max-w-xs space-y-2">
+                <input type="hidden" name="member_id" value={profile.id} />
+                <input type="hidden" name="return" value={ret} />
+                <textarea name="message" rows={2} maxLength={1000} placeholder="Mensagem para a pessoa (opcional)" aria-label="Mensagem do convite" className={inputCls} />
+                <button className={`${btnCls} w-full`}>Convidar para a rede da empresa</button>
               </form>
             ))}
         </div>
