@@ -65,17 +65,17 @@ export async function addInvite(formData: FormData) {
   const email = str(formData, "email").toLowerCase();
   const role = str(formData, "role");
   if (!EMAIL_RE.test(email) || !["mentor", "mentee", "company"].includes(role)) {
-    back("/admin", "error", "Informe um email valido e o papel.");
+    back("/admin/cadastros", "error", "Informe um email valido e o papel.");
   }
   if (await getDb().prepare("SELECT id FROM users WHERE email = ?").get(email)) {
-    back("/admin", "error", "Este email ja possui conta.");
+    back("/admin/cadastros", "error", "Este email ja possui conta.");
   }
   try {
     await getDb().prepare("INSERT INTO invites (email, role) VALUES (?,?)").run(email, role);
   } catch {
-    back("/admin", "error", "Este email ja foi convidado.");
+    back("/admin/cadastros", "error", "Este email ja foi convidado.");
   }
-  back("/admin", "msg", `Convite criado para ${email}.`);
+  back("/admin/cadastros", "msg", `Convite criado para ${email}.`);
 }
 
 export async function removeInvite(formData: FormData) {
@@ -83,7 +83,7 @@ export async function removeInvite(formData: FormData) {
   await getDb()
     .prepare("DELETE FROM invites WHERE email = ?")
     .run(str(formData, "email").toLowerCase());
-  back("/admin", "msg", "Convite removido.");
+  back("/admin/cadastros", "msg", "Convite removido.");
 }
 
 export async function login(formData: FormData) {
@@ -154,15 +154,15 @@ export async function reviewAccount(formData: FormData) {
   const id = Number(formData.get("id"));
   const decision = str(formData, "decision");
   if (!Number.isInteger(id) || !["approve", "reject"].includes(decision)) {
-    back("/admin", "error", "Cadastro invalido.");
+    back("/admin/cadastros", "error", "Cadastro invalido.");
   }
   const db = getDb();
   const user = await db.prepare("SELECT id FROM users WHERE id = ? AND account_status = 'pending'").get(id);
-  if (!user) back("/admin", "error", "Cadastro nao encontrado ou ja analisado.");
+  if (!user) back("/admin/cadastros", "error", "Cadastro nao encontrado ou ja analisado.");
   const status = decision === "approve" ? "active" : "rejected";
   await db.prepare("UPDATE users SET account_status = ? WHERE id = ?").run(status, id);
   await audit(null, `account.${status}`, "user", id);
-  back("/admin", "msg", decision === "approve" ? "Cadastro aprovado e liberado para uso." : "Cadastro recusado.");
+  back("/admin/cadastros", "msg", decision === "approve" ? "Cadastro aprovado e liberado para uso." : "Cadastro recusado.");
 }
 
 export async function createMentee(formData: FormData) {

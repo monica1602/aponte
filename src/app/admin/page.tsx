@@ -1,123 +1,55 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { addInvite, adminLogout, removeInvite, reviewAccount } from "@/lib/actions";
 import { isAdmin } from "@/lib/auth";
-import { getDb } from "@/lib/db";
-import { Badge, Card, Empty, Flash, inputCls, btnCls } from "@/components/ui";
+import { getDashboardData } from "@/lib/admin-data";
+import { AdminNav } from "@/components/admin-nav";
+import { Bars, EvolutionChart, ToolStats } from "@/components/admin-charts";
+import { Card } from "@/components/ui";
+import Link from "next/link";
 
-interface InviteRow {
-  email: string;
-  role: string;
-  created_at: string;
-  user_name: string | null;
-}
+export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Admin — Ponte" };
 
-interface PendingUserRow {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-  created_at: string;
-}
-
-export default async function AdminPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ msg?: string; error?: string }>;
-}) {
+export default async function AdminDashboard() {
   if (!(await isAdmin())) redirect("/admin/login");
-  const sp = await searchParams;
-
-  const invites = await getDb()
-    .prepare(
-      `SELECT i.email, i.role, i.created_at, u.name AS user_name
-       FROM invites i LEFT JOIN users u ON u.email = i.email
-       ORDER BY i.created_at DESC`
-    )
-    .all() as unknown as InviteRow[];
-  const pendingUsers = await getDb()
-    .prepare("SELECT id, name, email, role, created_at FROM users WHERE account_status = 'pending' ORDER BY created_at ASC")
-    .all() as unknown as PendingUserRow[];
-
+  const d = await getDashboardData();
+  const cards = [
+    { label: "Mentorados", value: d.totals.mentee, href: "/admin/mentorados" },
+    { label: "Mentores", value: d.totals.mentor, href: "/admin/mentores" },
+    { label: "Empresas", value: d.totals.company, href: "/admin/empresas" },
+    { label: "Projetos", value: d.totals.project },
+    { label: "Mentorias ativas", value: d.totals.mentorshipActive, note: `${d.totals.mentorshipPending} pendentes` },
+    { label: "Participacoes em projetos", value: d.totals.participations },
+    { label: "Eventos", value: d.totals.events, note: `${d.totals.registrations} inscricoes` },
+  ];
   return (
-    <div className="mx-auto max-w-2xl py-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Convites</h1>
-        <form action={adminLogout}>
-          <button className="text-sm text-muted transition-colors hover:text-fg cursor-pointer">
-            Sair do admin
-          </button>
-        </form>
+    <div className="py-8">
+      <AdminNav current="/admin" />
+      <h1 className="mb-6 text-2xl font-bold">Painel da plataforma</h1>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        {cards.map((c) => {
+          const body = (
+            <Card className="h-full">
+              <p className="text-xs text-muted">{c.label}</p>
+              <p className="mt-1 text-3xl font-bold">{c.value}</p>
+              {c.note && <p className="mt-1 text-xs text-muted">{c.note}</p>}
+            </Card>
+          );
+          return c.href ? <Link key={c.label} href={c.href} className="block transition-transform hover:-translate-y-0.5">{body}</Link> : <div key={c.label}>{body}</div>;
+        })}
       </div>
-      <Flash params={sp} />
-
-      <Card className="border-accent/40">
-        <h2 className="font-semibold">Cadastros aguardando aprovacao</h2>
-        <p className="mt-1 text-sm text-muted">Mentores e mentorados so podem entrar apos sua aprovacao.</p>
-        {pendingUsers.length === 0 ? (
-          <div className="mt-3"><Empty>Nenhum cadastro aguardando analise.</Empty></div>
-        ) : (
-          <ul className="mt-4 divide-y divide-line">
-            {pendingUsers.map((user) => (
-              <li key={user.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <div><p className="font-medium">{user.name} <Badge kind={user.role} /></p><p className="text-xs text-muted">{user.email}</p></div>
-                <form action={reviewAccount} className="flex gap-2"><input type="hidden" name="id" value={user.id} /><button name="decision" value="approve" className={btnCls}>Aprovar</button><button name="decision" value="reject" className="text-sm text-red-300 hover:underline">Recusar</button></form>
-              </li>
-            ))}
-          </ul>
-        )}
+      <Card className="mt-6">
+        <h2 className="mb-3 font-semibold">Evolucao por dia</h2>
+        <EvolutionChart days={d.days} />
       </Card>
-
-      <Card>
-        <h2 className="font-semibold">Convites Google (legado)</h2>
-        <p className="mb-4 text-sm text-muted">
-          Use esta opcao somente para o fluxo Google ja existente. Para novos
-          mentores e mentorados, oriente o cadastro direto e aprove-o acima.
-        </p>
-        <form action={addInvite} className="flex flex-col gap-3 sm:flex-row">
-          <input
-            name="email"
-            type="email"
-            required
-            placeholder="email@exemplo.com"
-            className={`${inputCls} flex-1`}
-          />
-          <select name="role" className={inputCls} defaultValue="mentee">
-            <option value="mentee">Mentorado(a)</option>
-            <option value="mentor">Mentor(a)</option>
-            <option value="company">Empresa</option>
-          </select>
-          <button type="submit" className={btnCls}>
-            Convidar
-          </button>
-        </form>
-      </Card>
-
-      <Card>
-        {invites.length === 0 ? (
-          <Empty>Nenhum convite ainda.</Empty>
-        ) : (
-          <ul className="divide-y divide-line">
-            {invites.map((i) => (
-              <li key={i.email} className="flex items-center justify-between gap-3 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{i.email}</p>
-                  <p className="text-xs text-muted">
-                    {i.user_name ? `Cadastrado como ${i.user_name}` : "Aguardando cadastro"}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Badge kind={i.role} />
-                  <form action={removeInvite}>
-                    <input type="hidden" name="email" value={i.email} />
-                    <button className="text-xs text-muted transition-colors hover:text-red-300 cursor-pointer">
-                      Remover
-                    </button>
-                  </form>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <Card><h2 className="mb-3 font-semibold">Projetos por tipo</h2><Bars data={d.projectsByKind} /></Card>
+        <Card><h2 className="mb-3 font-semibold">Projetos por situacao</h2><Bars data={d.projectsByStatus} /></Card>
+        <Card><h2 className="mb-3 font-semibold">Areas de interesse</h2><Bars data={d.areas.slice(0, 10)} /></Card>
+      </div>
+      <Card className="mt-6">
+        <h2 className="mb-3 font-semibold">Ferramentas</h2>
+        <ToolStats tools={d.tools} />
       </Card>
     </div>
   );

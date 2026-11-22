@@ -15,7 +15,7 @@ const DOMAIN_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
 
 /** Accepts "empresa.com.br" or "https://empresa.com.br" and stores it without the scheme. */
 function optionalUrl(formData: FormData, key: string, label: string, ret: string): string {
-  let v = str(formData, key, 300);
+  const v = str(formData, key, 300);
   if (!v) return "";
   if (!/^https?:\/\//i.test(v)) {
     if (!DOMAIN_RE.test(v)) back(ret, "error", `${label}: informe um endereco valido, por exemplo empresa.com.br`);
