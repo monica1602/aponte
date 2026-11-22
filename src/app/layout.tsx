@@ -214,7 +214,15 @@ export default async function RootLayout({
               <Link href="/sou-empresa" className="hover:text-fg">Sou Empresa</Link>
               <Link href="/conduta" className="hover:text-fg">Conduta</Link>
             </nav>
-            <span>Contas de demo: ana@ponte.dev / senha123</span>
+            <div className="flex items-center gap-4">
+              <span>Contas de demo: ana@ponte.dev / senha123</span>
+              <Link
+                href="/admin/login"
+                className="rounded-md border border-line px-3 py-1.5 text-muted hover:border-accent hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                Administracao
+              </Link>
+            </div>
           </div>
         </footer>
       </body>
