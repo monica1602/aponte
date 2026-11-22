@@ -238,6 +238,19 @@ export async function logout() {
   redirect("/");
 }
 
+export async function deleteAccount(formData: FormData) {
+  const user = await me();
+  const password = String(formData.get("password") ?? "");
+  if (formData.get("confirm") !== "1") back("/perfil", "error", "Marque a confirmacao para excluir a conta.");
+  const row = (await getDb().prepare("SELECT password_hash FROM users WHERE id = ?").get(user.id)) as { password_hash: string } | undefined;
+  if (!row || !verifyPassword(password, row.password_hash)) back("/perfil", "error", "Senha incorreta. A conta nao foi excluida.");
+  await destroySession();
+  await getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id);
+  await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);
+  await alertAdmin(`Conta excluida pelo proprio usuario: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
+  redirect(`/login?msg=${encodeURIComponent("Sua conta e seus dados foram excluidos.")}`);
+}
+
 export async function updateProfile(formData: FormData) {
   const user = await me();
   await getDb()

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getProfile, profileCompleteness } from "@/lib/db";
 import { saveDetailedProfile } from "@/lib/edu-actions";
+import { deleteAccount } from "@/lib/actions";
 import {
   AREAS, COMPANY_TYPES, HELP_TYPES, MENTEE_LEVELS, MENTOR_LEVELS, MODALITIES, NO_TOOLS, PERIODS, SECTORS,
   SESSION_DURATIONS, TOOLS, UFS, WEEKDAYS, WEEKLY_HOURS,
@@ -115,6 +116,24 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
         <p className="text-xs text-muted">Campos com * sao obrigatorios.</p>
         <button className={`${btnCls} w-full sm:w-auto`}>Salvar perfil</button>
       </form>
+      <details id="excluir-conta" className="mt-10 rounded-lg border border-red-400/30 bg-red-400/5 p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-red-300">Excluir minha conta</summary>
+        <form action={deleteAccount} data-no-keep className="mt-4 space-y-4">
+          <p className="text-sm text-muted">
+            Isso apaga de forma definitiva sua conta e os dados ligados a ela: perfil, mentorias, projetos, eventos,
+            inscricoes, convites, certificados e notificacoes. Nao da para desfazer.
+          </p>
+          <Field label="Digite sua senha para confirmar">
+            <input name="password" type="password" required autoComplete="current-password" className={inputCls} />
+          </Field>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" name="confirm" value="1" required /> Entendo que a exclusao e definitiva.
+          </label>
+          <button className="rounded-md bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600">
+            Excluir minha conta definitivamente
+          </button>
+        </form>
+      </details>
     </div>
   );
 }
