@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db";
 import { getProjectForViewer } from "@/lib/projects";
 import { PROJECT_KINDS, PROJECT_STATUS } from "@/lib/catalog";
 import {
-  addProjectFeedback, applyToProject, cancelApplication, deleteProject, grantProjectAccess, reviewApplication, revokeProjectAccess, updateProjectStatus,
+  addProjectFeedback, applyToProject, cancelApplication, deleteProject, grantProjectAccess, inviteProjectMentor, reviewApplication, revokeProjectAccess, updateProjectStatus,
 } from "@/lib/edu-actions";
 import { DeleteConfirm } from "@/components/delete-confirm";
 import { Badge, Card, Empty, Flash, ROLE_LABELS, SkillChips, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
@@ -51,6 +51,17 @@ export default async function ProjetoPage({
       ).all(user!.id) as unknown as { id: number; name: string }[]).filter((m) => !grantedMentors.some((g) => g.id === m.id))
     : [];
   const full = p.slots !== null && participants.length >= p.slots;
+  const pendingMentorInvites = isOwner
+    ? (await db.prepare(
+        `SELECT u.id, u.name FROM project_mentor_invites i JOIN users u ON u.id = i.mentor_id WHERE i.project_id = ? ORDER BY u.name`
+      ).all(p.id) as unknown as { id: number; name: string }[])
+    : [];
+  const invitableMentors = isOwner
+    ? (await db.prepare(
+        "SELECT id, name, headline FROM users WHERE role = 'mentor' AND account_status = 'active' AND id != ? ORDER BY name"
+      ).all(user!.id) as unknown as { id: number; name: string; headline: string }[])
+        .filter((m) => !grantedMentors.some((g) => g.id === m.id) && !pendingMentorInvites.some((x) => x.id === m.id))
+    : [];
 
   return (
     <div className="grid gap-8 py-10 lg:grid-cols-[1fr_320px]">
@@ -149,6 +160,33 @@ export default async function ProjetoPage({
             <DeleteConfirm action={deleteProject} fields={{ project_id: p.id, return: `/projetos/${p.id}` }} label="Excluir projeto">
               O projeto, as candidaturas, os comentarios e os acessos de mentores serao apagados. Quem participa recebe um aviso.
             </DeleteConfirm>
+          </Card>
+        )}
+
+        {isOwner && (
+          <Card className="space-y-3">
+            <h2 className="font-semibold">Convidar mentores para ajudar</h2>
+            <p className="text-xs text-muted">O mentor recebe um aviso e um e-mail e escolhe se aceita. Quem aceitar pode ver e comentar o projeto.</p>
+            {p.kind !== "particular" && grantedMentors.length > 0 && (
+              <ul className="space-y-1 text-sm">{grantedMentors.map((m) => <li key={m.id} className="flex items-center justify-between gap-2">{m.name} <Badge kind="active" label="Ajudando" /></li>)}</ul>
+            )}
+            {pendingMentorInvites.length > 0 && (
+              <ul className="space-y-1 text-sm">{pendingMentorInvites.map((m) => <li key={m.id} className="flex items-center justify-between gap-2">{m.name} <Badge kind="pending" label="Convite enviado" /></li>)}</ul>
+            )}
+            {invitableMentors.length > 0 ? (
+              <form action={inviteProjectMentor} className="space-y-2">
+                <input type="hidden" name="project_id" value={p.id} />
+                <label className="sr-only" htmlFor="invite-mentor">Mentor</label>
+                <select id="invite-mentor" name="mentor_id" required className={inputCls}>
+                  {invitableMentors.map((m) => <option key={m.id} value={m.id}>{m.name}{m.headline ? ` — ${m.headline}` : ""}</option>)}
+                </select>
+                <textarea name="message" rows={2} maxLength={500} placeholder="Mensagem (opcional): como o mentor pode ajudar" className={inputCls} />
+                <button className={`${btnSecondaryCls} w-full`}>Enviar convite</button>
+              </form>
+            ) : (
+              <p className="text-xs text-muted">Todos os mentores disponiveis ja foram convidados.</p>
+            )}
+            <Link href="/mentores" className="block text-sm text-accent hover:underline">Ver perfis dos mentores →</Link>
           </Card>
         )}
 

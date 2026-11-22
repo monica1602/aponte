@@ -9,6 +9,7 @@ import {
 } from "./catalog";
 import { getProjectForViewer } from "./projects";
 import { alertAdmin, ROLE_PT } from "./admin-alert";
+import { emailUser } from "./user-email";
 
 const URL_RE = /^https?:\/\/[^\s]+$/i;
 
@@ -139,7 +140,7 @@ export async function createProject(formData: FormData) {
   const id = Number(result.lastInsertRowid);
   await audit(user.id, "project.created", "project", id);
   await alertAdmin(`Novo projeto: "${title}", de ${user.name}`);
-  back(`/projetos/${id}`, "msg", kind === "particular" ? "Projeto particular criado. Somente voce e os mentores que autorizar podem ve-lo." : "Projeto criado.");
+  back(`/projetos/${id}`, "msg", kind === "particular" ? "Projeto particular criado. Somente voce e os mentores que autorizar podem ve-lo. Convide mentores para ajudar na lateral." : "Projeto criado. Convide mentores para ajudar na lateral.");
 }
 
 async function ownProject(id: number, userId: number): Promise<Project | null> {
@@ -169,8 +170,9 @@ export async function deleteProject(formData: FormData) {
   const db = getDb();
   const people = (await db.prepare(
     `SELECT user_id FROM project_applications WHERE project_id = ? AND status IN ('pending','accepted')
-     UNION SELECT mentor_id FROM project_access WHERE project_id = ? AND revoked_at IS NULL`
-  ).all(id, id)) as unknown as { user_id: number }[];
+     UNION SELECT mentor_id FROM project_access WHERE project_id = ? AND revoked_at IS NULL
+     UNION SELECT mentor_id FROM project_mentor_invites WHERE project_id = ?`
+  ).all(id, id, id)) as unknown as { user_id: number }[];
   await db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   for (const p of people) await notify(p.user_id, `O projeto "${project!.title}" foi excluido por ${user.name}.`, "/meus-projetos");
   await audit(user.id, "project.delete", "project", id);
@@ -202,6 +204,53 @@ export async function grantProjectAccess(formData: FormData) {
   await alertAdmin(`Nova conexao: ${user.name} compartilhou o projeto "${project!.title}" com ${linked!.name}`);
   await notify(mentorId, `${user.name} compartilhou o projeto particular "${project!.title}" com voce.`, ret);
   back(ret, "msg", `${linked!.name} agora pode ver e comentar este projeto.`);
+}
+
+export async function inviteProjectMentor(formData: FormData) {
+  const user = await requireUser();
+  const id = Number(formData.get("project_id"));
+  const mentorId = Number(formData.get("mentor_id"));
+  const ret = `/projetos/${id}`;
+  const project = await ownProject(id, user.id);
+  if (!project) back("/projetos", "error", "Projeto nao encontrado.");
+  const db = getDb();
+  const mentor = (await db.prepare("SELECT id, name FROM users WHERE id = ? AND role = 'mentor' AND account_status = 'active'").get(mentorId)) as { id: number; name: string } | undefined;
+  if (!mentor || mentor.id === user.id) back(ret, "error", "Escolha um mentor para convidar.");
+  const granted = await db.prepare("SELECT 1 FROM project_access WHERE project_id = ? AND mentor_id = ? AND revoked_at IS NULL").get(id, mentorId);
+  if (granted) back(ret, "error", `${mentor!.name} ja ajuda neste projeto.`);
+  const res = await db.prepare(
+    "INSERT INTO project_mentor_invites (project_id, mentor_id, message) VALUES (?,?,?) ON CONFLICT(project_id, mentor_id) DO NOTHING"
+  ).run(id, mentorId, str(formData, "message", 500));
+  if (!Number(res.changes)) back(ret, "error", `Voce ja convidou ${mentor!.name}. Aguarde a resposta.`);
+  await notify(mentorId, `${user.name} convidou voce para ajudar no projeto "${project!.title}".`, "/meus-projetos");
+  await emailUser(mentorId, `${user.name} convidou voce para ajudar em um projeto`, `${user.name} convidou voce para ser mentor do projeto "${project!.title}" na Ponte. Entre no site para aceitar ou recusar.`, "Ver convite", "/meus-projetos");
+  await audit(user.id, "project.mentor_invited", "project", id);
+  await alertAdmin(`Novo convite: ${user.name} convidou ${mentor!.name} para o projeto "${project!.title}"`);
+  back(ret, "msg", `Convite enviado para ${mentor!.name}. Voce recebe um aviso quando ele responder.`);
+}
+
+export async function respondProjectMentorInvite(formData: FormData) {
+  const user = await requireUser();
+  const inviteId = Number(formData.get("invite_id"));
+  const accept = str(formData, "decision") === "accept";
+  const db = getDb();
+  const inv = (await db.prepare(
+    `SELECT i.project_id, p.title, p.owner_id FROM project_mentor_invites i JOIN projects p ON p.id = i.project_id
+     WHERE i.id = ? AND i.mentor_id = ?`
+  ).get(inviteId, user.id)) as { project_id: number; title: string; owner_id: number } | undefined;
+  if (!inv) back("/meus-projetos", "error", "Convite nao encontrado.");
+  await db.prepare("DELETE FROM project_mentor_invites WHERE id = ?").run(inviteId);
+  if (accept) {
+    await db.prepare(
+      `INSERT INTO project_access (project_id, mentor_id) VALUES (?,?)
+       ON CONFLICT(project_id, mentor_id) DO UPDATE SET revoked_at = NULL, granted_at = datetime('now')`
+    ).run(inv!.project_id, user.id);
+  }
+  await notify(inv!.owner_id, `${user.name} ${accept ? "aceitou" : "recusou"} o convite para ajudar no projeto "${inv!.title}".`, `/projetos/${inv!.project_id}`);
+  await audit(user.id, accept ? "project.mentor_accepted" : "project.mentor_declined", "project", inv!.project_id);
+  if (accept) await alertAdmin(`Nova conexao: ${user.name} agora ajuda no projeto "${inv!.title}"`);
+  if (accept) back(`/projetos/${inv!.project_id}`, "msg", "Convite aceito. Agora voce pode ver e comentar este projeto.");
+  back("/meus-projetos", "msg", "Convite recusado.");
 }
 
 export async function revokeProjectAccess(formData: FormData) {
