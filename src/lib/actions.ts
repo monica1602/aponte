@@ -113,6 +113,10 @@ export async function login(formData: FormData) {
   if (user!.account_status === "rejected") {
     back("/login", "error", "Seu cadastro nao foi aprovado. Fale com o administrador.");
   }
+  if (!user!.must_change_password && passwordProblem(password)) {
+    await getDb().prepare("UPDATE users SET must_change_password = 1 WHERE id = ?").run(user!.id);
+    user!.must_change_password = 1;
+  }
   await createSession(user!.id);
   if (user!.must_change_password) redirect("/primeiro-acesso");
   redirect("/dashboard");
@@ -207,6 +211,11 @@ export async function changeInitialPassword(formData: FormData) {
   if (weak) back("/primeiro-acesso", "error", weak);
   if (password !== confirmation) {
     back("/primeiro-acesso", "error", "A confirmacao de senha nao confere.");
+  }
+  if (user!.code_of_conduct_accepted_at && user!.public_profile_consent) {
+    await getDb().prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(password), user!.id);
+    await audit(user!.id, "password.policy_updated", "user", user!.id);
+    back("/dashboard", "msg", "Senha atualizada. Obrigado por deixar sua conta mais segura.");
   }
   if (formData.get("employment_terms") !== "on" || formData.get("code_of_conduct") !== "on") {
     back("/primeiro-acesso", "error", "Aceite as condicoes de participacao e o codigo de conduta para continuar.");

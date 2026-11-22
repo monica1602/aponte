@@ -36,7 +36,7 @@ test("seed cria perfis educacionais, projetos e metas", async () => {
 
 test("senha: hash scrypt valida a correta e rejeita a errada", async () => {
   const u = await user("joao@email.com");
-  assert.equal(db.verifyPassword("senha123", u.password_hash), true);
+  assert.equal(db.verifyPassword(db.DEMO_PASSWORD, u.password_hash), true);
   assert.equal(db.verifyPassword("errada", u.password_hash), false);
 });
 

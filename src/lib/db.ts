@@ -410,6 +410,7 @@ async function init() {
     await ensureMigrations(db);
     await seedIfEmpty(db);
     await seedEducation(db);
+    await upgradeDemoPasswords(db);
   });
 }
 
@@ -532,12 +533,26 @@ export async function audit(
     .run(actorId, action, entityType, entityId);
 }
 
+export const DEMO_PASSWORD = "Ponte@2026";
+const DEMO_EMAILS = ["ana@ponte.dev", "carlos@ponte.dev", "rita@ponte.dev", "contato@techcorp.dev", "joao@email.com", "maria@email.com", "pedro@email.com"];
+
+// Contas de demo criadas com a senha antiga ("senha123") passam para a senha que atende a politica atual.
+async function upgradeDemoPasswords(db: Db) {
+  if (process.env.SEED_DEMO === "0") return;
+  for (const email of DEMO_EMAILS) {
+    const row = (await db.prepare("SELECT id, password_hash FROM users WHERE email = ?").get(email)) as { id: number; password_hash: string } | undefined;
+    if (row && verifyPassword("senha123", row.password_hash)) {
+      await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(DEMO_PASSWORD), row.id);
+    }
+  }
+}
+
 async function seedIfEmpty(db: Db) {
   if (process.env.SEED_DEMO === "0") return;
   const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM users").get()) as { n: number };
   if (n > 0) return;
 
-  const pw = hashPassword("senha123");
+  const pw = hashPassword(DEMO_PASSWORD);
   const insertUser = db.prepare(
     "INSERT INTO users (email, password_hash, name, role, headline, bio, skills) VALUES (?,?,?,?,?,?,?)"
   );

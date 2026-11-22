@@ -230,7 +230,7 @@ As acoes de cadastro, eventos, presenca e certificados validam usuario, papel
 e propriedade no servidor. Senhas sao protegidas com `scrypt`, sessoes usam
 cookies `httpOnly`, e acoes operacionais relevantes entram no log de auditoria.
 
-### Contas de demo (senha: `senha123`)
+### Contas de demo (senha: `Ponte@2026`)
 
 | Papel      | Email              |
 | ---------- | ------------------ |
