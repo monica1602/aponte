@@ -171,8 +171,9 @@ export async function deleteProject(formData: FormData) {
   const people = (await db.prepare(
     `SELECT user_id FROM project_applications WHERE project_id = ? AND status IN ('pending','accepted')
      UNION SELECT mentor_id FROM project_access WHERE project_id = ? AND revoked_at IS NULL
-     UNION SELECT mentor_id FROM project_mentor_invites WHERE project_id = ?`
-  ).all(id, id, id)) as unknown as { user_id: number }[];
+     UNION SELECT mentor_id FROM project_mentor_invites WHERE project_id = ?
+     UNION SELECT user_id FROM project_member_invites WHERE project_id = ?`
+  ).all(id, id, id, id)) as unknown as { user_id: number }[];
   await db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   for (const p of people) await notify(p.user_id, `O projeto "${project!.title}" foi excluido por ${user.name}.`, "/meus-projetos");
   await audit(user.id, "project.delete", "project", id);
@@ -250,6 +251,58 @@ export async function respondProjectMentorInvite(formData: FormData) {
   await audit(user.id, accept ? "project.mentor_accepted" : "project.mentor_declined", "project", inv!.project_id);
   if (accept) await alertAdmin(`Nova conexao: ${user.name} agora ajuda no projeto "${inv!.title}"`);
   if (accept) back(`/projetos/${inv!.project_id}`, "msg", "Convite aceito. Agora voce pode ver e comentar este projeto.");
+  back("/meus-projetos", "msg", "Convite recusado.");
+}
+
+export async function inviteProjectMember(formData: FormData) {
+  const user = await requireUser();
+  const id = Number(formData.get("project_id"));
+  const memberId = Number(formData.get("user_id"));
+  const ret = `/projetos/${id}`;
+  const project = await ownProject(id, user.id);
+  if (!project) back("/projetos", "error", "Projeto nao encontrado.");
+  if (project!.kind === "particular") back(ret, "error", "Projetos particulares nao recebem participantes. Crie um projeto educacional ou open source.");
+  const db = getDb();
+  const member = (await db.prepare("SELECT id, name FROM users WHERE id = ? AND role = 'mentee' AND account_status = 'active'").get(memberId)) as { id: number; name: string } | undefined;
+  if (!member || member.id === user.id) back(ret, "error", "Escolha um mentorado para convidar.");
+  const joined = await db.prepare("SELECT 1 FROM project_applications WHERE project_id = ? AND user_id = ? AND status = 'accepted'").get(id, memberId);
+  if (joined) back(ret, "error", `${member!.name} ja participa deste projeto.`);
+  const res = await db.prepare(
+    "INSERT INTO project_member_invites (project_id, user_id, message) VALUES (?,?,?) ON CONFLICT(project_id, user_id) DO NOTHING"
+  ).run(id, memberId, str(formData, "message", 500));
+  if (!Number(res.changes)) back(ret, "error", `Voce ja convidou ${member!.name}. Aguarde a resposta.`);
+  await notify(memberId, `${user.name} convidou voce para participar do projeto "${project!.title}".`, "/meus-projetos");
+  await emailUser(memberId, `${user.name} convidou voce para participar de um projeto`, `${user.name} convidou voce para participar do projeto "${project!.title}" na Ponte. Entre no site para aceitar ou recusar.`, "Ver convite", "/meus-projetos");
+  await audit(user.id, "project.member_invited", "project", id);
+  await alertAdmin(`Novo convite: ${user.name} convidou ${member!.name} para o projeto "${project!.title}"`);
+  back(ret, "msg", `Convite enviado para ${member!.name}. Voce recebe um aviso quando a pessoa responder.`);
+}
+
+export async function respondProjectMemberInvite(formData: FormData) {
+  const user = await requireUser();
+  const inviteId = Number(formData.get("invite_id"));
+  const accept = str(formData, "decision") === "accept";
+  const db = getDb();
+  const inv = (await db.prepare(
+    `SELECT i.project_id, p.title, p.owner_id, p.slots FROM project_member_invites i JOIN projects p ON p.id = i.project_id
+     WHERE i.id = ? AND i.user_id = ?`
+  ).get(inviteId, user.id)) as { project_id: number; title: string; owner_id: number; slots: number | null } | undefined;
+  if (!inv) back("/meus-projetos", "error", "Convite nao encontrado.");
+  if (accept && inv!.slots !== null) {
+    const { n } = await db.prepare("SELECT COUNT(*) AS n FROM project_applications WHERE project_id = ? AND status = 'accepted'").get(inv!.project_id) as { n: number };
+    if (n >= inv!.slots!) back("/meus-projetos", "error", "Todas as vagas deste projeto ja foram preenchidas.");
+  }
+  await db.prepare("DELETE FROM project_member_invites WHERE id = ?").run(inviteId);
+  if (accept) {
+    await db.prepare(
+      `INSERT INTO project_applications (project_id, user_id, message, status) VALUES (?,?,'Entrou por convite','accepted')
+       ON CONFLICT(project_id, user_id) DO UPDATE SET status = 'accepted'`
+    ).run(inv!.project_id, user.id);
+  }
+  await notify(inv!.owner_id, `${user.name} ${accept ? "aceitou" : "recusou"} o convite para participar do projeto "${inv!.title}".`, `/projetos/${inv!.project_id}`);
+  await audit(user.id, accept ? "project.member_accepted" : "project.member_declined", "project", inv!.project_id);
+  if (accept) await alertAdmin(`Nova participacao: ${user.name} entrou no projeto "${inv!.title}" por convite`);
+  if (accept) back(`/projetos/${inv!.project_id}`, "msg", "Convite aceito. Agora voce participa deste projeto.");
   back("/meus-projetos", "msg", "Convite recusado.");
 }
 

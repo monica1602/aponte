@@ -5,7 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { PROJECT_KINDS, PROJECT_STATUS } from "@/lib/catalog";
 import { listOwnProjects, listParticipating, listSharedWithMentor } from "@/lib/projects";
 import { DeleteConfirm } from "@/components/delete-confirm";
-import { deleteProject, respondProjectMentorInvite } from "@/lib/edu-actions";
+import { deleteProject, respondProjectMemberInvite, respondProjectMentorInvite } from "@/lib/edu-actions";
 import { getDb } from "@/lib/db";
 import { Badge, Card, Empty, Flash, PageHeader, btnCls, btnSecondaryCls } from "@/components/ui";
 
@@ -24,7 +24,13 @@ export default async function MeusProjetosPage({ searchParams }: { searchParams:
         `SELECT i.id, i.message, p.title, p.summary, u.name AS owner_name, u.id AS owner_id FROM project_mentor_invites i
          JOIN projects p ON p.id = i.project_id JOIN users u ON u.id = p.owner_id WHERE i.mentor_id = ? ORDER BY i.created_at DESC`
       ).all(user.id)) as unknown as { id: number; message: string; title: string; summary: string; owner_name: string; owner_id: number }[])
-    : [];
+    : user.role === "mentee"
+      ? ((await getDb().prepare(
+          `SELECT i.id, i.message, p.title, p.summary, u.name AS owner_name, u.id AS owner_id FROM project_member_invites i
+           JOIN projects p ON p.id = i.project_id JOIN users u ON u.id = p.owner_id WHERE i.user_id = ? ORDER BY i.created_at DESC`
+        ).all(user.id)) as unknown as { id: number; message: string; title: string; summary: string; owner_name: string; owner_id: number }[])
+      : [];
+  const respondInvite = user.role === "mentor" ? respondProjectMentorInvite : respondProjectMemberInvite;
   const section = (title: string, items: { id: number; title: string; kind: string; tag: string }[], empty: string, deletable = false) => (
     <section className="mb-8">
       <h2 className="mb-3 text-lg font-semibold">{title}</h2>
@@ -57,7 +63,7 @@ export default async function MeusProjetosPage({ searchParams }: { searchParams:
       <Link href="/projetos/novo" className={`${btnCls} mb-8`}>Criar projeto</Link>
       {invites.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 text-lg font-semibold">Convites para ajudar em projetos ({invites.length})</h2>
+          <h2 className="mb-3 text-lg font-semibold">{user.role === "mentor" ? "Convites para ajudar em projetos" : "Convites para participar de projetos"} ({invites.length})</h2>
           <ul className="grid gap-3 sm:grid-cols-2">
             {invites.map((i) => (
               <li key={i.id}>
@@ -68,7 +74,7 @@ export default async function MeusProjetosPage({ searchParams }: { searchParams:
                   {i.message && <p className="mt-2 text-sm text-muted">&ldquo;{i.message}&rdquo;</p>}
                   <div className="mt-3 flex gap-2">
                     {(["accept", "reject"] as const).map((d) => (
-                      <form key={d} action={respondProjectMentorInvite}>
+                      <form key={d} action={respondInvite}>
                         <input type="hidden" name="invite_id" value={i.id} /><input type="hidden" name="decision" value={d} />
                         <button className={d === "accept" ? btnCls : btnSecondaryCls}>{d === "accept" ? "Aceitar" : "Recusar"}</button>
                       </form>

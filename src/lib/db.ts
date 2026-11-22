@@ -337,6 +337,14 @@ CREATE TABLE IF NOT EXISTS project_mentor_invites (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(project_id, mentor_id)
 );
+CREATE TABLE IF NOT EXISTS project_member_invites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(project_id, user_id)
+);
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

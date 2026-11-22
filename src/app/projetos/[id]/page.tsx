@@ -7,7 +7,7 @@ import { getDb } from "@/lib/db";
 import { getProjectForViewer } from "@/lib/projects";
 import { PROJECT_KINDS, PROJECT_STATUS } from "@/lib/catalog";
 import {
-  addProjectFeedback, applyToProject, cancelApplication, deleteProject, grantProjectAccess, inviteProjectMentor, reviewApplication, revokeProjectAccess, updateProjectStatus,
+  addProjectFeedback, applyToProject, cancelApplication, deleteProject, grantProjectAccess, inviteProjectMember, inviteProjectMentor, reviewApplication, revokeProjectAccess, updateProjectStatus,
 } from "@/lib/edu-actions";
 import { DeleteConfirm } from "@/components/delete-confirm";
 import { Badge, Card, Empty, Flash, ROLE_LABELS, SkillChips, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
@@ -61,6 +61,18 @@ export default async function ProjetoPage({
         "SELECT id, name, headline FROM users WHERE role = 'mentor' AND account_status = 'active' AND id != ? ORDER BY name"
       ).all(user!.id) as unknown as { id: number; name: string; headline: string }[])
         .filter((m) => !grantedMentors.some((g) => g.id === m.id) && !pendingMentorInvites.some((x) => x.id === m.id))
+    : [];
+  const pendingMemberInvites = isOwner
+    ? (await db.prepare(
+        `SELECT u.id, u.name FROM project_member_invites i JOIN users u ON u.id = i.user_id WHERE i.project_id = ? ORDER BY u.name`
+      ).all(p.id) as unknown as { id: number; name: string }[])
+    : [];
+  const invitableMembers = isOwner && p.kind !== "particular"
+    ? (await db.prepare(
+        `SELECT id, name, headline FROM users WHERE role = 'mentee' AND account_status = 'active' AND id != ?
+           AND id NOT IN (SELECT user_id FROM project_applications WHERE project_id = ? AND status = 'accepted') ORDER BY name`
+      ).all(user!.id, p.id) as unknown as { id: number; name: string; headline: string }[])
+        .filter((m) => !pendingMemberInvites.some((x) => x.id === m.id))
     : [];
 
   return (
@@ -187,6 +199,36 @@ export default async function ProjetoPage({
               <p className="text-xs text-muted">Todos os mentores disponiveis ja foram convidados.</p>
             )}
             <Link href="/mentores" className="block text-sm text-accent hover:underline">Ver perfis dos mentores →</Link>
+          </Card>
+        )}
+
+        {isOwner && (
+          <Card className="space-y-3">
+            <h2 className="font-semibold">Convidar mentorados para participar</h2>
+            {p.kind === "particular" ? (
+              <p className="text-xs text-muted">Projetos particulares ficam visiveis so para voce e seus mentores. Para trabalhar com outros mentorados, crie um projeto educacional ou open source.</p>
+            ) : (
+              <>
+                <p className="text-xs text-muted">A pessoa recebe um aviso e um e-mail e escolhe se aceita. Quem aceitar entra como participante.</p>
+                {pendingMemberInvites.length > 0 && (
+                  <ul className="space-y-1 text-sm">{pendingMemberInvites.map((m) => <li key={m.id} className="flex items-center justify-between gap-2">{m.name} <Badge kind="pending" label="Convite enviado" /></li>)}</ul>
+                )}
+                {invitableMembers.length > 0 ? (
+                  <form action={inviteProjectMember} className="space-y-2">
+                    <input type="hidden" name="project_id" value={p.id} />
+                    <label className="sr-only" htmlFor="invite-member">Mentorado</label>
+                    <select id="invite-member" name="user_id" required className={inputCls}>
+                      {invitableMembers.map((m) => <option key={m.id} value={m.id}>{m.name}{m.headline ? ` — ${m.headline}` : ""}</option>)}
+                    </select>
+                    <textarea name="message" rows={2} maxLength={500} placeholder="Mensagem (opcional): o que a pessoa faria no projeto" className={inputCls} />
+                    <button className={`${btnSecondaryCls} w-full`}>Enviar convite</button>
+                  </form>
+                ) : (
+                  <p className="text-xs text-muted">Todos os mentorados disponiveis ja foram convidados ou participam.</p>
+                )}
+                <Link href="/talentos" className="block text-sm text-accent hover:underline">Ver perfis dos mentorados →</Link>
+              </>
+            )}
           </Card>
         )}
 
