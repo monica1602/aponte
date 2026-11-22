@@ -8,6 +8,7 @@ import {
   PERIODS, PROJECT_KINDS, PROJECT_STATUS, SECTORS, SESSION_DURATIONS, TOOLS, UFS, WEEKDAYS, WEEKLY_HOURS,
 } from "./catalog";
 import { getProjectForViewer } from "./projects";
+import { alertAdmin, ROLE_PT } from "./admin-alert";
 
 const URL_RE = /^https?:\/\/[^\s]+$/i;
 
@@ -92,6 +93,7 @@ export async function saveDetailedProfile(formData: FormData) {
     .prepare("UPDATE users SET headline = ?, bio = ?, skills = ? WHERE id = ?")
     .run(str(formData, "headline", 160), str(formData, "bio", 2000), skills, user.id);
   await audit(user.id, "profile.updated", "user", user.id);
+  await alertAdmin(`Cadastro atualizado: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   back(ret, "msg", "Perfil salvo. Ele ja e usado no calculo de compatibilidade.");
 }
 
@@ -136,6 +138,7 @@ export async function createProject(formData: FormData) {
     );
   const id = Number(result.lastInsertRowid);
   await audit(user.id, "project.created", "project", id);
+  await alertAdmin(`Novo projeto: "${title}", de ${user.name}`);
   back(`/projetos/${id}`, "msg", kind === "particular" ? "Projeto particular criado. Somente voce e os mentores que autorizar podem ve-lo." : "Projeto criado.");
 }
 
@@ -177,6 +180,7 @@ export async function grantProjectAccess(formData: FormData) {
     )
     .run(id, mentorId);
   await audit(user.id, "project.access_granted", "project", id);
+  await alertAdmin(`Nova conexao: ${user.name} compartilhou o projeto "${project!.title}" com ${linked!.name}`);
   await notify(mentorId, `${user.name} compartilhou o projeto particular "${project!.title}" com voce.`, ret);
   back(ret, "msg", `${linked!.name} agora pode ver e comentar este projeto.`);
 }
@@ -214,6 +218,7 @@ export async function applyToProject(formData: FormData) {
        ON CONFLICT(project_id, user_id) DO UPDATE SET status = 'pending', message = excluded.message, created_at = datetime('now')`
     )
     .run(id, user.id, message);
+  await alertAdmin(`Nova candidatura: ${user.name} se candidatou ao projeto "${p.title}"`);
   await notify(p.owner_id, `${user.name} se candidatou ao projeto "${p.title}".`, ret);
   back(ret, "msg", "Candidatura enviada. Voce sera avisado(a) quando o responsavel responder.");
 }
@@ -251,6 +256,10 @@ export async function reviewApplication(formData: FormData) {
     ret
   );
   await audit(user.id, `project.application_${status}`, "project", row!.project_id);
+  if (status === "accepted") {
+    const who = (await getDb().prepare("SELECT name FROM users WHERE id = ?").get(row!.user_id)) as { name: string } | undefined;
+    await alertAdmin(`Nova participacao: ${who?.name ?? "alguem"} entrou no projeto "${row!.title}"`);
+  }
   back(ret, "msg", status === "accepted" ? "Participante aceito." : "Candidatura recusada.");
 }
 

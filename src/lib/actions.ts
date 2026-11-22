@@ -11,6 +11,12 @@ import {
   getSessionUser,
   isAdmin,
 } from "./auth";
+import { alertAdmin, ROLE_PT } from "./admin-alert";
+
+async function nameOf(id: number): Promise<string> {
+  const r = (await getDb().prepare("SELECT name FROM users WHERE id = ?").get(id)) as { name: string } | undefined;
+  return r?.name ?? "alguem";
+}
 
 function back(path: string, key: "msg" | "error", text: string): never {
   const sep = path.includes("?") ? "&" : "?";
@@ -144,6 +150,7 @@ export async function registerAccount(formData: FormData) {
   ).run(email, hashPassword(password), name, role, REQUIRE_APPROVAL ? "pending" : "active", formData.get("image_consent") === "on" ? 1 : 0);
   const newUserId = Number(result.lastInsertRowid);
   await audit(null, REQUIRE_APPROVAL ? "account.requested" : "account.created", "user", newUserId);
+  await alertAdmin(`Novo cadastro de ${ROLE_PT[role]}: ${name}${REQUIRE_APPROVAL ? " (aguardando aprovacao)" : ""}`);
   if (REQUIRE_APPROVAL) back("/login", "msg", "Cadastro enviado. Aguarde a aprovacao do administrador para entrar.");
   await createSession(newUserId);
   back("/perfil", "msg", "Conta criada! Complete seu perfil para receber recomendacoes por compatibilidade.");
@@ -227,6 +234,7 @@ export async function updateProfile(formData: FormData) {
       formData.get("public_profile_consent") === "on" ? 1 : 0,
       user.id
     );
+  await alertAdmin(`Cadastro atualizado: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   back("/dashboard", "msg", "Perfil atualizado.");
 }
 
@@ -250,6 +258,7 @@ export async function requestMentorship(formData: FormData) {
     back(ret, "error", "Voce ja possui uma solicitacao com este mentor.");
   }
   await notify(mentorId, `${user.name} pediu sua mentoria.`, "/dashboard");
+  await alertAdmin(`Novo pedido de mentoria: ${user.name} pediu mentoria a ${await nameOf(mentorId)}`);
   back(ret, "msg", "Solicitacao de mentoria enviada. Voce sera avisado(a) quando o mentor responder.");
 }
 
@@ -270,6 +279,7 @@ export async function respondMentorship(formData: FormData) {
   );
   if (decision === "accept") {
     await db.prepare("UPDATE mentorships SET status = 'active' WHERE id = ?").run(id);
+    await alertAdmin(`Nova mentoria ativa: ${user.name} aceitou ${await nameOf(req!.mentee_id)}`);
   } else {
     await db.prepare("DELETE FROM mentorships WHERE id = ?").run(id);
   }
@@ -292,6 +302,7 @@ export async function inviteMentee(formData: FormData) {
   } catch {
     back(ret, "error", "Voce ja tem uma mentoria ou convite com esta pessoa.");
   }
+  await alertAdmin(`Novo convite de mentoria: ${user.name} convidou ${await nameOf(menteeId)}`);
   await notify(menteeId, `${user.name} convidou voce para uma mentoria. Aceite ou recuse em Mentores.`, "/minha-rede?aba=mentores");
   back(ret, "msg", "Convite enviado. O mentorado sera avisado e podera aceitar ou recusar.");
 }
@@ -307,7 +318,10 @@ export async function respondMentorInvite(formData: FormData) {
     .prepare("SELECT id, mentor_id FROM mentorships WHERE id = ? AND mentee_id = ? AND status = 'pending' AND requested_by = 'mentor'")
     .get(id, user.id)) as { id: number; mentor_id: number } | undefined;
   if (!inv) back(ret, "error", "Convite nao encontrado.");
-  if (accept) await db.prepare("UPDATE mentorships SET status = 'active' WHERE id = ?").run(id);
+  if (accept) {
+    await db.prepare("UPDATE mentorships SET status = 'active' WHERE id = ?").run(id);
+    await alertAdmin(`Nova mentoria ativa: ${user.name} aceitou o convite de ${await nameOf(inv!.mentor_id)}`);
+  }
   else await db.prepare("DELETE FROM mentorships WHERE id = ?").run(id);
   await notify(
     inv!.mentor_id,
