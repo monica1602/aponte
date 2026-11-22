@@ -140,7 +140,7 @@ export async function createProject(formData: FormData) {
   const id = Number(result.lastInsertRowid);
   await audit(user.id, "project.created", "project", id);
   await alertAdmin(`Novo projeto: "${title}", de ${user.name}`);
-  back(`/projetos/${id}`, "msg", kind === "particular" ? "Projeto particular criado. Somente voce e os mentores que autorizar podem ve-lo. Convide mentores para ajudar na lateral." : "Projeto criado. Convide mentores para ajudar na lateral.");
+  back(`/projetos/${id}`, "msg", kind === "particular" ? "Projeto particular criado. Somente voce e os mentores que autorizar podem ve-lo. Convide mentores e mentorados na lateral." : "Projeto criado. Convide mentores e mentorados na lateral.");
 }
 
 async function ownProject(id: number, userId: number): Promise<Project | null> {
