@@ -14,6 +14,9 @@ import {
 import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
+import { bareUrl } from "./url";
+
+const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
 
 async function nameOf(id: number): Promise<string> {
   const r = (await getDb().prepare("SELECT name FROM users WHERE id = ?").get(id)) as { name: string } | undefined;
@@ -508,7 +511,7 @@ export async function createEvent(formData: FormData) {
   const modality = str(formData, "modality");
   const startsAt = str(formData, "starts_at");
   const endsAt = str(formData, "ends_at");
-  const onlineUrl = str(formData, "online_url");
+  const onlineUrl = bareUrl(str(formData, "online_url"));
   const location = str(formData, "location");
   const capacityText = str(formData, "capacity");
   const capacity = capacityText ? Number(capacityText) : null;
@@ -521,6 +524,9 @@ export async function createEvent(formData: FormData) {
   }
   if ((modality === "online" || modality === "hybrid") && !onlineUrl) {
     back("/dashboard", "error", "Informe o link para o evento online.");
+  }
+  if (onlineUrl && !LINK_RE.test(onlineUrl)) {
+    back("/dashboard", "error", "Link do encontro: informe um endereco valido, por exemplo meet.google.com/abc-defg-hij");
   }
   if ((modality === "in_person" || modality === "hybrid") && !location) {
     back("/dashboard", "error", "Informe o local do evento presencial.");

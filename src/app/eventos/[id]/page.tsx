@@ -1,3 +1,4 @@
+import { externalHref } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -51,7 +52,7 @@ export default async function EventoPage({
         <Card><dt className="text-xs text-muted">Quando</dt><dd className="mt-1 text-sm">{new Date(e.starts_at).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" })} ate {new Date(e.ends_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</dd></Card>
         <Card><dt className="text-xs text-muted">Onde</dt><dd className="mt-1 text-sm">
           {e.location ? `${e.location}${e.city ? ` — ${e.city}${e.state ? `/${e.state}` : ""}` : ""}` : "Online"}
-          {e.modality !== "in_person" && <span className="block text-xs text-muted">{showLink ? <a href={e.online_url} className="text-accent underline" target="_blank" rel="noreferrer">Link do encontro</a> : "O link online e liberado para inscricoes confirmadas."}</span>}
+          {e.modality !== "in_person" && <span className="block text-xs text-muted">{showLink ? <a href={externalHref(e.online_url)} className="text-accent underline" target="_blank" rel="noreferrer">Link do encontro</a> : "O link online e liberado para inscricoes confirmadas."}</span>}
         </dd></Card>
         <Card><dt className="text-xs text-muted">Vagas</dt><dd className="mt-1 text-sm">{e.capacity ? `${e.approved}/${e.capacity} confirmadas` : "Sem limite"}</dd></Card>
         <Card><dt className="text-xs text-muted">Inscricao</dt><dd className="mt-1 text-sm">{e.require_approval ? "Sujeita a aprovacao do organizador" : "Confirmacao automatica"}</dd></Card>

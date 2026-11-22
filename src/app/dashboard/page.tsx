@@ -98,7 +98,7 @@ function EventCreator() {
           <input name="starts_at" type="datetime-local" required className={inputCls} />
           <input name="ends_at" type="datetime-local" required className={inputCls} />
         </div>
-        <input name="online_url" type="url" placeholder="Link do encontro online" className={inputCls} />
+        <input name="online_url" type="text" inputMode="url" placeholder="Link do encontro online (ex.: meet.google.com/abc-defg-hij)" className={inputCls} />
         <input name="location" placeholder="Endereco / local presencial" className={inputCls} />
         <div className="grid gap-3 sm:grid-cols-3">
           <select name="category" aria-label="Categoria" className={inputCls} defaultValue="">
