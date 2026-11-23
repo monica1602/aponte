@@ -130,6 +130,15 @@ CREATE TABLE IF NOT EXISTS users (
   code_of_conduct_accepted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS legal_acceptances (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  doc TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  accepted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS legal_acceptances_user ON legal_acceptances (user_id, doc);
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -471,6 +480,7 @@ async function init() {
     await seedIfEmpty(db);
     await seedEducation(db);
     await upgradeDemoPasswords(db);
+    await backfillLegalAcceptances(db);
   });
 }
 
@@ -504,6 +514,22 @@ async function ensureMigrations(db: Db) {
     message: "TEXT NOT NULL DEFAULT ''",
     requested_by: "TEXT NOT NULL DEFAULT 'mentee'",
   });
+}
+
+/** Contas com aceite gravado antes do versionamento recebem a versao 1, com a data original. */
+async function backfillLegalAcceptances(db: Db) {
+  const docs: [string, string][] = [
+    ["terms", "employment_terms_accepted_at"],
+    ["privacy", "employment_terms_accepted_at"],
+    ["conduct", "code_of_conduct_accepted_at"],
+  ];
+  for (const [doc, col] of docs) {
+    await db.prepare(
+      `INSERT INTO legal_acceptances (user_id, doc, version, source, accepted_at)
+       SELECT u.id, ?, 1, 'anterior', u.${col} FROM users u
+       WHERE u.${col} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM legal_acceptances a WHERE a.user_id = u.id AND a.doc = ?)`
+    ).run(doc, doc);
+  }
 }
 
 async function addColumns(db: Db, table: string, cols: Record<string, string>) {

@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOriginRequest } from "@/lib/csrf";
+import { hashToken } from "@/lib/auth";
+import { sessionNeedsReaccept } from "@/lib/legal-acceptance";
 
-export function proxy(request: NextRequest) {
+// Paginas abertas mesmo para quem ainda precisa aceitar uma versao nova dos documentos.
+const REACCEPT_FREE = /^\/(novos-termos|termos|privacidade|conduta|primeiro-acesso|login|signup|esqueci-senha|redefinir-senha|verificar-email|certificados|admin|auth|api)(\/|$)/;
+
+export async function proxy(request: NextRequest) {
   const h = request.headers;
   const ok = isSameOriginRequest({
     method: request.method,
@@ -10,7 +15,18 @@ export function proxy(request: NextRequest) {
     forwardedHost: h.get("x-forwarded-host"),
     secFetchSite: h.get("sec-fetch-site"),
   });
-  if (ok) return NextResponse.next();
+  if (ok) {
+    const token = request.cookies.get("ponte_session")?.value;
+    const path = request.nextUrl.pathname;
+    if (token && (request.method === "GET" || request.method === "HEAD") && !REACCEPT_FREE.test(path) && !/\.\w+$/.test(path)) {
+      try {
+        if (await sessionNeedsReaccept(hashToken(token))) return NextResponse.redirect(new URL("/novos-termos", request.url));
+      } catch {
+        /* sem banco, a pagina segue e o servidor confere de novo nas acoes */
+      }
+    }
+    return NextResponse.next();
+  }
   return new NextResponse(
     `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Pedido bloqueado - Ponte</title></head>
 <body style="font-family:Arial,sans-serif;background:#0b1118;color:#e6edf3;display:flex;justify-content:center;padding:64px 16px">

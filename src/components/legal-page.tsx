@@ -24,7 +24,7 @@ export function LegalPage({ doc, path, title, texts, requested }: {
           </p>
         )}
         <div className="mt-5">{texts[version.version]()}</div>
-        <section className="mt-8 border-t border-line pt-5 text-sm text-muted">
+        <section id="historico" className="mt-8 border-t border-line pt-5 text-sm text-muted">
           <h2 className="font-semibold text-fg">Historico de versoes</h2>
           <ul className="mt-2 space-y-1">
             {history.map((v, i) => (

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getSessionUser } from "./auth";
 import type { User } from "./db";
+import { pendingLegalDocs } from "./legal-acceptance";
 
 export function back(path: string, key: "msg" | "error", text: string): never {
   const sep = path.includes("?") ? "&" : "?";
@@ -51,6 +52,7 @@ export async function requireUser(): Promise<User> {
   if (!user) redirect("/login");
   if (user.account_status !== "active") redirect("/login?error=Sua conta ainda nao esta ativa.");
   if (user.must_change_password) redirect("/primeiro-acesso");
+  if ((await pendingLegalDocs(user.id)).length) redirect("/novos-termos");
   return user;
 }
 

@@ -24,6 +24,7 @@ import { bareUrl } from "./url";
 import { checkInWindow, spTime } from "./event-time";
 import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate-limit";
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
+import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
@@ -47,12 +48,13 @@ const REQUIRE_APPROVAL = process.env.REQUIRE_APPROVAL === "1";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EVENT_MODALITIES = ["online", "in_person", "hybrid"];
 
-async function me(): Promise<User> {
+async function me(allowPendingTerms = false): Promise<User> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user!.account_status !== "active") redirect("/login?error=Sua conta ainda nao esta ativa.");
   if (user!.must_change_password) redirect("/primeiro-acesso");
-  return user;
+  if (!allowPendingTerms && (await pendingLegalDocs(user!.id)).length) redirect("/novos-termos");
+  return user!;
 }
 
 async function sendEmailVerification(userId: number, email: string, name: string, role: string): Promise<void> {
@@ -228,6 +230,7 @@ export async function login(formData: FormData) {
   }
   await createSession(user!.id);
   if (user!.must_change_password) redirect("/primeiro-acesso");
+  if ((await pendingLegalDocs(user!.id)).length) redirect("/novos-termos");
   redirect("/dashboard");
 }
 
@@ -267,6 +270,7 @@ export async function registerAccount(formData: FormData) {
     ) VALUES (?,?,?,?, ?, ?, 1, datetime('now'), datetime('now'), datetime('now'), 'pending')`
   ).run(email, hashPassword(password), name, role, REQUIRE_APPROVAL ? "pending" : "active", formData.get("image_consent") === "on" ? 1 : 0);
   const newUserId = Number(result.lastInsertRowid);
+  await recordLegalAcceptance(newUserId, "cadastro");
   await recordAttempt("signup", [`ip:${ip}`]);
   await sendEmailVerification(newUserId, email, name, role);
   await audit(null, REQUIRE_APPROVAL ? "account.requested" : "account.created", "user", newUserId);
@@ -331,6 +335,7 @@ export async function changeInitialPassword(formData: FormData) {
   if (user!.code_of_conduct_accepted_at && user!.public_profile_consent) {
     await getDb().prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(password), user!.id);
     await audit(user!.id, "password.policy_updated", "user", user!.id);
+    if ((await pendingLegalDocs(user!.id)).length) redirect("/novos-termos");
     back("/dashboard", "msg", "Senha atualizada. Obrigado por deixar sua conta mais segura.");
   }
   if (formData.get("employment_terms") !== "on" || formData.get("code_of_conduct") !== "on") {
@@ -344,8 +349,23 @@ export async function changeInitialPassword(formData: FormData) {
       image_consent = ?, public_profile_consent = 1, public_profile_consent_at = datetime('now'), employment_terms_accepted_at = datetime('now'),
       code_of_conduct_accepted_at = datetime('now') WHERE id = ?`
   ).run(hashPassword(password), formData.get("image_consent") === "on" ? 1 : 0, user!.id);
+  await recordLegalAcceptance(user!.id, "primeiro_acesso");
   await audit(user!.id, "password.initial_changed", "user", user!.id);
   redirect("/dashboard");
+}
+
+export async function acceptLegalUpdates(formData: FormData) {
+  const user = await me(true);
+  const pending = await pendingLegalDocs(user.id);
+  if (!pending.length) redirect("/dashboard");
+  if (pending.some((doc) => formData.get(`accept_${doc}`) !== "on")) {
+    back("/novos-termos", "error", "Leia ate o fim e aceite cada documento atualizado para continuar.");
+  }
+  await recordLegalAcceptance(user.id, "reaceite", pending);
+  if (pending.includes("terms")) await getDb().prepare("UPDATE users SET employment_terms_accepted_at = datetime('now') WHERE id = ?").run(user.id);
+  if (pending.includes("conduct")) await getDb().prepare("UPDATE users SET code_of_conduct_accepted_at = datetime('now') WHERE id = ?").run(user.id);
+  await audit(user.id, "legal.reaccepted", "user", user.id);
+  back("/dashboard", "msg", "Obrigado! Seu aceite dos documentos atualizados foi registrado.");
 }
 
 export async function logout() {
@@ -354,19 +374,21 @@ export async function logout() {
 }
 
 export async function deleteAccount(formData: FormData) {
-  const user = await me();
+  const user = await me(true);
+  const ret = formData.get("ret") === "/novos-termos" ? "/novos-termos" : "/perfil";
   const password = String(formData.get("password") ?? "");
-  if (formData.get("confirm") !== "1") back("/perfil", "error", "Marque a confirmacao para excluir a conta.");
+  if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para excluir a conta.");
   const deleteLimit = { action: "delete_account", subject: `user:${user.id}`, max: 5, windowMin: 15 };
   const wait = await blockedFor([deleteLimit]);
-  if (wait) back("/perfil", "error", tooManyMessage(wait));
+  if (wait) back(ret, "error", tooManyMessage(wait));
   const row = (await getDb().prepare("SELECT password_hash FROM users WHERE id = ?").get(user.id)) as { password_hash: string } | undefined;
   if (!row || !verifyPassword(password, row.password_hash)) {
     await recordAttempt("delete_account", [deleteLimit.subject]);
-    back("/perfil", "error", "Senha incorreta. A conta nao foi excluida.");
+    back(ret, "error", "Senha incorreta. A conta nao foi excluida.");
   }
   await destroySession();
   await getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id);
+  await getDb().prepare("DELETE FROM legal_acceptances WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);
   await alertAdmin(`Conta excluida pelo proprio usuario: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   redirect(`/login?msg=${encodeURIComponent("Sua conta e seus dados foram excluidos.")}`);

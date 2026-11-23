@@ -28,3 +28,10 @@ export function formatLegalDate(isoDate: string): string {
 export function versionLabel(v: LegalVersion): string {
   return `Versao ${v.version} — em vigor desde ${formatLegalDate(v.effectiveFrom)}`;
 }
+
+export const LEGAL_DOCS: LegalDoc[] = ["terms", "privacy", "conduct"];
+
+/** Documentos cuja versao em vigor e mais nova que a ultima versao aceita. */
+export function docsBehind(accepted: Partial<Record<LegalDoc, number>>): LegalDoc[] {
+  return LEGAL_DOCS.filter((d) => (accepted[d] ?? 0) < currentVersion(d).version);
+}

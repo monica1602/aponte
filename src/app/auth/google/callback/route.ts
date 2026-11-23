@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSession } from "@/lib/auth";
 import { getDb, type Invite, type User } from "@/lib/db";
 import { baseUrl, fetchGoogleUser } from "@/lib/oauth";
+import { recordLegalAcceptance } from "@/lib/legal-acceptance";
 
 function fail(text: string) {
   return NextResponse.redirect(`${baseUrl()}/login?error=${encodeURIComponent(text)}`);
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
         email, "oauth", info.name?.trim() || email.split("@")[0], invite.role,
         consents.image ? 1 : 0, consents.acceptedAt, consents.acceptedAt
       );
+    await recordLegalAcceptance(Number(res.lastInsertRowid), "google");
     user = await db
       .prepare("SELECT * FROM users WHERE id = ?")
       .get(Number(res.lastInsertRowid)) as unknown as User;

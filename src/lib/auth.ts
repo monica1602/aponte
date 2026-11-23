@@ -5,7 +5,7 @@ import { getDb, type User } from "./db";
 const COOKIE = "ponte_session";
 const TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
-function hashToken(token: string): string {
+export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
