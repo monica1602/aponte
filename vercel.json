@@ -1,0 +1,3 @@
+{
+  "crons": [{ "path": "/api/cron/lembrete-chegada", "schedule": "0 12 * * *" }]
+}

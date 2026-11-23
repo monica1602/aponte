@@ -4,6 +4,7 @@ import { EVENT_CATEGORIES } from "@/lib/catalog";
 import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { SafeHomeButton } from "@/components/safe-home-button";
 import {
   updateProfile,
   respondMentorship,
@@ -77,6 +78,12 @@ type RegistrationRow = {
   participant_id: number; participant_name: string;
 };
 type MeetingLink = LinkRow & { mentorship_id: number };
+
+// safe_home_at vem de datetime('now') em UTC ("AAAA-MM-DD HH:MM:SS").
+function safeHomeTime(at: string): string {
+  const d = new Date(`${at.replace(" ", "T")}Z`);
+  return Number.isNaN(d.getTime()) ? "" : `em ${d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}`;
+}
 
 const WEEKDAYS = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
 
@@ -153,7 +160,7 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
               {r.checked_in_at && <form action={issueCertificate}><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="recipient_id" value={r.participant_id} /><button className="text-accent hover:underline">emitir certificado</button></form>}
             </div></li>)}</ul>}
           </li>;
-        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p>{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && <form action={confirmSafeHome} className="mt-2"><input type="hidden" name="registration_id" value={r.id} /><button className={btnSecondaryCls}>Cheguei bem em casa</button></form>}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada</p>}</li>)}</ul>
+        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p>{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && <SafeHomeButton action={confirmSafeHome} registrationId={r.id} />}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada {safeHomeTime(r.safe_home_at)}</p>}</li>)}</ul>
       )}
     </Card>
   );

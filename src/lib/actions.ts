@@ -657,15 +657,22 @@ export async function confirmSafeHome(formData: FormData) {
   const registrationId = Number(formData.get("registration_id"));
   const ret = str(formData, "return") || "/dashboard";
   const db = getDb();
-  const row = await db.prepare(
-    `SELECT r.id FROM event_registrations r JOIN events e ON e.id = r.event_id
-     WHERE r.id = ? AND r.user_id = ? AND e.modality IN ('in_person','hybrid')`
-  ).get(registrationId, user.id);
-  if (!row) back(ret, "error", "Confirmacao indisponivel para este evento.");
+  const row = (await db.prepare(
+    `SELECT r.id, r.safe_home_at, e.id AS event_id, e.title, e.owner_id FROM event_registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ? AND r.user_id = ? AND e.modality IN ('in_person','hybrid') AND r.checked_in_at IS NOT NULL`
+  ).get(registrationId, user.id)) as { id: number; safe_home_at: string | null; event_id: number; title: string; owner_id: number } | undefined;
+  if (!row) back(ret, "error", "Confirmacao indisponivel: ela so vale para eventos presenciais ou hibridos em que voce fez check-in.");
+  if (row.safe_home_at) back(ret, "msg", "Sua chegada ja estava confirmada.");
   await db.prepare("UPDATE event_registrations SET safe_home_at = COALESCE(safe_home_at, datetime('now')) WHERE id = ?")
     .run(registrationId);
   await audit(user.id, "event.safe_home_confirmed", "event_registration", registrationId);
-  back(ret, "msg", "Confirmacao registrada. Que bom que voce chegou bem.");
+  const text = `${user.name} confirmou que chegou bem em casa apos o evento "${row.title}".`;
+  if (row.owner_id !== user.id) {
+    await notify(row.owner_id, text, "/meus-eventos");
+    await emailUser(row.owner_id, `${user.name} chegou bem em casa`, text, "Ver meus eventos", "/meus-eventos");
+  }
+  await alertAdmin(text);
+  back(ret, "msg", "Confirmacao registrada. Que bom que voce chegou bem! O organizador foi avisado.");
 }
 
 export async function updateAvailability(formData: FormData) {

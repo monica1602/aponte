@@ -457,6 +457,9 @@ async function ensureMigrations(db: Db) {
     state: "TEXT NOT NULL DEFAULT ''",
     organizer: "TEXT NOT NULL DEFAULT ''",
   });
+  await addColumns(db, "event_registrations", {
+    safe_home_reminded_at: "TEXT",
+  });
   await addColumns(db, "mentorships", {
     objective: "TEXT NOT NULL DEFAULT ''",
     message: "TEXT NOT NULL DEFAULT ''",
