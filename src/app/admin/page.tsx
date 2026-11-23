@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
-import { getDashboardData } from "@/lib/admin-data";
+import { getDashboardData, getEventAttendance } from "@/lib/admin-data";
+import { AttendanceTable } from "@/components/admin-attendance";
 import { AdminNav } from "@/components/admin-nav";
 import { Bars, EvolutionChart, ToolStats } from "@/components/admin-charts";
 import { Card } from "@/components/ui";
@@ -12,7 +13,7 @@ export const metadata: Metadata = { title: "Admin — Ponte" };
 
 export default async function AdminDashboard() {
   if (!(await isAdmin())) redirect("/admin/login");
-  const d = await getDashboardData();
+  const [d, attendance] = await Promise.all([getDashboardData(), getEventAttendance()]);
   const cards = [
     { label: "Mentorados", value: d.totals.mentee, href: "/admin/mentorados" },
     { label: "Mentores", value: d.totals.mentor, href: "/admin/mentores" },
@@ -20,7 +21,7 @@ export default async function AdminDashboard() {
     { label: "Projetos", value: d.totals.project },
     { label: "Mentorias ativas", value: d.totals.mentorshipActive, note: `${d.totals.mentorshipPending} pendentes` },
     { label: "Participacoes em projetos", value: d.totals.participations },
-    { label: "Eventos", value: d.totals.events, note: `${d.totals.registrations} inscricoes` },
+    { label: "Eventos", value: d.totals.events, note: `${d.totals.registrations} inscricoes · ${d.totals.checkins} check-ins`, href: "/admin/eventos" },
   ];
   return (
     <div className="py-8">
@@ -41,6 +42,13 @@ export default async function AdminDashboard() {
       <Card className="mt-6">
         <h2 className="mb-3 font-semibold">Evolucao por dia</h2>
         <EvolutionChart days={d.days} />
+      </Card>
+      <Card className="mt-6 overflow-x-auto">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="font-semibold">Participantes por evento</h2>
+          <Link href="/admin/eventos" className="text-xs text-accent hover:underline">Ver todos →</Link>
+        </div>
+        {attendance.length === 0 ? <p className="text-sm text-muted">Nenhum evento cadastrado.</p> : <AttendanceTable events={attendance.slice(0, 10)} />}
       </Card>
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Card><h2 className="mb-3 font-semibold">Projetos por tipo</h2><Bars data={d.projectsByKind} /></Card>

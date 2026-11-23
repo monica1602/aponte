@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { SafeHomeButton } from "@/components/safe-home-button";
+import { CheckInButton } from "@/components/check-in-button";
+import { checkInWindow, spTime } from "@/lib/event-time";
 import {
   updateProfile,
   respondMentorship,
@@ -15,6 +17,7 @@ import {
   deleteOpportunity,
   checkInEvent,
   confirmSafeHome,
+  selfCheckInEvent,
   createMentee,
   createEvent,
   issueCertificate,
@@ -70,10 +73,10 @@ type AvailabilityRow = { id: number; weekday: number; start_time: string; end_ti
 type EventRow = {
   id: number; title: string; modality: string; starts_at: string; ends_at: string;
   location: string; online_url: string; capacity: number | null; require_approval: number;
-  approved: number; requested: number;
+  approved: number; requested: number; checkins: number;
 };
 type RegistrationRow = {
-  id: number; event_id: number; title: string; modality: string; starts_at: string;
+  id: number; event_id: number; title: string; modality: string; starts_at: string; ends_at: string;
   status: string; checked_in_at: string | null; safe_home_at: string | null;
   participant_id: number; participant_name: string;
 };
@@ -144,6 +147,15 @@ function AvailabilityEditor({ rows }: { rows: AvailabilityRow[] }) {
   );
 }
 
+function SelfCheckIn({ r }: { r: RegistrationRow }) {
+  if (r.status !== "approved") return null;
+  if (r.checked_in_at) return <p className="mt-2 text-xs text-cyan-300">✓ Check-in feito {safeHomeTime(r.checked_in_at)}</p>;
+  const win = checkInWindow(r.starts_at, r.ends_at);
+  if (win.state === "before") return <p className="mt-2 text-xs text-muted">O check-in abre em {spTime(win.opens)}.</p>;
+  if (win.state === "closed") return <p className="mt-2 text-xs text-muted">Check-in encerrado.</p>;
+  return <CheckInButton action={selfCheckInEvent} registrationId={r.id} />;
+}
+
 function MyEvents({ events, registrations, owner }: { events: EventRow[]; registrations: RegistrationRow[]; owner: boolean }) {
   return (
     <Card>
@@ -154,13 +166,14 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
           return <li key={event.id} className="rounded-xl border border-line p-3">
             <p className="font-medium"><Badge kind={event.modality} label={event.modality === "in_person" ? "Presencial" : event.modality === "hybrid" ? "Hibrido" : "Online"} /> {event.title}</p>
             <p className="mt-1 text-xs text-muted">{new Date(event.starts_at).toLocaleString("pt-BR")} · {event.approved} confirmado(s){event.capacity ? ` / ${event.capacity}` : ""} · {event.requested} aguardando</p>
+            <p className="mt-1 text-xs text-cyan-300">{event.checkins} de {event.approved} confirmado(s) fizeram check-in</p>
             {participants.length > 0 && <ul className="mt-3 space-y-2 border-t border-line pt-2">{participants.map((r) => <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-xs"><span>{r.participant_name} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></span><div className="flex gap-2">
               {r.status === "requested" && <form action={reviewEventRegistration}><input type="hidden" name="registration_id" value={r.id} /><button name="decision" value="approve" className="text-emerald-300 hover:underline">aprovar</button><button name="decision" value="decline" className="ml-2 text-red-300 hover:underline">recusar</button></form>}
               {r.status === "approved" && !r.checked_in_at && <form action={checkInEvent}><input type="hidden" name="registration_id" value={r.id} /><button className="text-cyan hover:underline">check-in</button></form>}
               {r.checked_in_at && <form action={issueCertificate}><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="recipient_id" value={r.participant_id} /><button className="text-accent hover:underline">emitir certificado</button></form>}
             </div></li>)}</ul>}
           </li>;
-        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p>{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && <SafeHomeButton action={confirmSafeHome} registrationId={r.id} />}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada {safeHomeTime(r.safe_home_at)}</p>}</li>)}</ul>
+        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p><SelfCheckIn r={r} />{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && <SafeHomeButton action={confirmSafeHome} registrationId={r.id} />}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada {safeHomeTime(r.safe_home_at)}</p>}</li>)}</ul>
       )}
     </Card>
   );
@@ -328,21 +341,23 @@ export default async function DashboardPage({
     ? (await db.prepare(
         `SELECT e.*,
           (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved,
-          (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'requested') AS requested
+          (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'requested') AS requested,
+          (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved' AND r.checked_in_at IS NOT NULL) AS checkins
          FROM events e WHERE e.owner_id = ? ORDER BY e.starts_at DESC`
       ).all(user.id) as unknown as EventRow[])
     : [];
+  const myRegistrations = (await db.prepare(
+    `SELECT r.*, e.title, e.modality, e.starts_at, e.ends_at, u.id AS participant_id, u.name AS participant_name
+     FROM event_registrations r JOIN events e ON e.id = r.event_id JOIN users u ON u.id = r.user_id
+     WHERE r.user_id = ? AND r.status IN ('requested','approved','waitlist') ORDER BY e.starts_at DESC`
+  ).all(user.id)) as unknown as RegistrationRow[];
   const eventRegistrations = isMentorSide
     ? (await db.prepare(
-        `SELECT r.*, e.title, e.modality, e.starts_at, u.id AS participant_id, u.name AS participant_name
+        `SELECT r.*, e.title, e.modality, e.starts_at, e.ends_at, u.id AS participant_id, u.name AS participant_name
          FROM event_registrations r JOIN events e ON e.id = r.event_id JOIN users u ON u.id = r.user_id
          WHERE e.owner_id = ? AND r.status IN ('requested','approved','waitlist') ORDER BY e.starts_at DESC, r.created_at DESC`
       ).all(user.id) as unknown as RegistrationRow[])
-    : (await db.prepare(
-        `SELECT r.*, e.title, e.modality, e.starts_at, u.id AS participant_id, u.name AS participant_name
-         FROM event_registrations r JOIN events e ON e.id = r.event_id JOIN users u ON u.id = r.user_id
-         WHERE r.user_id = ? AND r.status IN ('requested','approved','waitlist') ORDER BY e.starts_at DESC`
-      ).all(user.id) as unknown as RegistrationRow[]);
+    : myRegistrations;
   const availability = user.role === "mentee"
     ? (await db.prepare("SELECT * FROM availability WHERE user_id = ? ORDER BY weekday, start_time").all(user.id) as unknown as AvailabilityRow[])
     : [];
@@ -484,6 +499,7 @@ export default async function DashboardPage({
             </>
           ) : (
             <>
+              {myRegistrations.length > 0 && <MyEvents events={[]} registrations={myRegistrations} owner={false} />}
               <EventCreator />
               <MyEvents events={myEvents} registrations={eventRegistrations} owner />
               <OpportunityEditor myOpps={myOpps} />

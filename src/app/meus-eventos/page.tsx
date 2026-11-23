@@ -58,7 +58,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
                 <Card>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Link href={`/eventos/${e.id}`} className="text-lg font-semibold text-accent hover:underline">{e.title}</Link>
-                    <span className="text-xs text-muted">{new Date(e.starts_at).toLocaleString("pt-BR", { dateStyle: "medium", timeStyle: "short" })} · {list.length} inscritos{e.capacity ? ` / ${e.capacity} vagas` : ""}</span>
+                    <span className="text-xs text-muted">{new Date(e.starts_at).toLocaleString("pt-BR", { dateStyle: "medium", timeStyle: "short" })} · {list.length} inscritos{e.capacity ? ` / ${e.capacity} vagas` : ""} · {list.filter((r) => r.status === "approved" && r.checked_in_at).length} de {list.filter((r) => r.status === "approved").length} confirmados fizeram check-in</span>
                   </div>
                   {list.length === 0 ? <p className="mt-3 text-sm text-muted">Nenhuma pessoa inscrita ainda.</p> : (
                     <div className="mt-3 overflow-x-auto">

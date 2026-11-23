@@ -1,6 +1,7 @@
 import { getDb, type Profile } from "./db";
 import { splitCsv } from "./session";
 import { PROJECT_STATUS } from "./catalog";
+import { eventTimeMs } from "./event-time";
 
 export type Role = "mentor" | "mentee" | "company";
 export type Ref = { id: number; name: string; role?: string; extra?: string };
@@ -102,7 +103,7 @@ export async function listPeople(role?: Role): Promise<PersonRow[]> {
 }
 
 export type DashboardData = {
-  totals: { mentee: number; mentor: number; company: number; project: number; mentorshipActive: number; mentorshipPending: number; participations: number; events: number; registrations: number };
+  totals: { mentee: number; mentor: number; company: number; project: number; mentorshipActive: number; mentorshipPending: number; participations: number; events: number; registrations: number; checkins: number };
   days: { date: string; mentee: number; mentor: number; company: number; project: number; mentorship: number }[];
   projectsByKind: { label: string; value: number }[];
   projectsByStatus: { label: string; value: number }[];
@@ -122,9 +123,10 @@ function tally(values: string[]): { label: string; value: number }[] {
 export async function getDashboardData(): Promise<DashboardData> {
   const { users, ms, projects, apps, prof } = await load();
   const db = getDb();
-  const [ev, regs] = await Promise.all([
+  const [ev, regs, checks] = await Promise.all([
     db.prepare("SELECT COUNT(*) AS n FROM events").get(),
     db.prepare("SELECT COUNT(*) AS n FROM event_registrations").get(),
+    db.prepare("SELECT COUNT(*) AS n FROM event_registrations WHERE status = 'approved' AND checked_in_at IS NOT NULL").get(),
   ]);
   const day = (s: string) => String(s).slice(0, 10);
   const all = [...users.map((u) => day(u.created_at)), ...projects.map((p) => day(p.created_at)), ...ms.map((m) => day(m.created_at))].filter(Boolean).sort();
@@ -157,6 +159,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       participations: apps.filter((a) => a.status === "accepted").length,
       events: Number((ev as { n: number }).n),
       registrations: Number((regs as { n: number }).n),
+      checkins: Number((checks as { n: number }).n),
     },
     days,
     projectsByKind: tally(projects.map((p) => KIND[p.kind] ?? p.kind)),
@@ -170,6 +173,27 @@ export async function getDashboardData(): Promise<DashboardData> {
     },
     areas: tally(users.flatMap((u) => prof.get(u.id)?.areas ?? [])),
   };
+}
+
+export type EventAttendance = {
+  id: number; title: string; modality: string; starts_at: string; ends_at: string; organizer: string;
+  approved: number; checkins: number; situation: string;
+};
+
+export async function getEventAttendance(): Promise<EventAttendance[]> {
+  const rows = (await getDb().prepare(
+    `SELECT e.id, e.title, e.modality, e.starts_at, e.ends_at, u.name AS organizer,
+       (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved,
+       (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved' AND r.checked_in_at IS NOT NULL) AS checkins
+     FROM events e JOIN users u ON u.id = e.owner_id ORDER BY e.starts_at DESC`
+  ).all()) as unknown as EventAttendance[];
+  const now = Date.now();
+  return rows.map((r) => ({
+    ...r,
+    approved: Number(r.approved),
+    checkins: Number(r.checkins),
+    situation: now > eventTimeMs(r.ends_at) ? "Encerrado" : now >= eventTimeMs(r.starts_at) ? "Em andamento" : "Agendado",
+  }));
 }
 
 export async function getPersonDetail(id: number) {

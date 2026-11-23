@@ -15,6 +15,7 @@ import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
+import { checkInWindow, spTime } from "./event-time";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
 
@@ -650,6 +651,28 @@ export async function checkInEvent(formData: FormData) {
     .run(registrationId);
   await audit(user.id, "event.checked_in", "event_registration", registrationId);
   back("/dashboard", "msg", "Presenca registrada.");
+}
+
+export async function selfCheckInEvent(formData: FormData) {
+  const user = await me();
+  const registrationId = Number(formData.get("registration_id"));
+  const ret = str(formData, "return") || "/dashboard";
+  const db = getDb();
+  const row = (await db.prepare(
+    `SELECT r.id, r.checked_in_at, e.title, e.owner_id, e.starts_at, e.ends_at FROM event_registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ? AND r.user_id = ? AND r.status = 'approved'`
+  ).get(registrationId, user.id)) as { id: number; checked_in_at: string | null; title: string; owner_id: number; starts_at: string; ends_at: string } | undefined;
+  if (!row) back(ret, "error", "Check-in indisponivel: ele so vale para a sua inscricao confirmada.");
+  if (row.checked_in_at) back(ret, "msg", "Seu check-in ja estava registrado.");
+  const win = checkInWindow(row.starts_at, row.ends_at);
+  if (win.state === "before") back(ret, "error", `O check-in abre em ${spTime(win.opens)}, 30 minutos antes do inicio do evento.`);
+  if (win.state === "closed") back(ret, "error", "O check-in foi encerrado: o evento ja terminou.");
+  const marked = await db.prepare("UPDATE event_registrations SET checked_in_at = datetime('now') WHERE id = ? AND checked_in_at IS NULL")
+    .run(registrationId);
+  if (!marked.changes) back(ret, "msg", "Seu check-in ja estava registrado.");
+  await audit(user.id, "event.self_checked_in", "event_registration", registrationId);
+  if (row.owner_id !== user.id) await notify(row.owner_id, `${user.name} fez check-in no evento "${row.title}".`, "/meus-eventos");
+  back(ret, "msg", "Check-in registrado. O organizador foi avisado da sua presenca.");
 }
 
 export async function confirmSafeHome(formData: FormData) {
