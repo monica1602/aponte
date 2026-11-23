@@ -2,17 +2,21 @@
 
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import crypto from "node:crypto";
 import { audit, getDb, hashPassword, notify, verifyPassword, type User } from "./db";
 import {
+  clearAdminPending,
+  createAdminPending,
   createAdminSession,
   createSession,
   destroyAdminSession,
   destroySession,
   getSessionUser,
+  hasAdminPending,
   isAdmin,
 } from "./auth";
+import { activeTwoFactor, checkSecondFactor, disableTwoFactor, enableTwoFactor, twoFactorResetOn } from "./admin-2fa";
 import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
@@ -83,8 +87,70 @@ export async function adminLogin(formData: FormData) {
     if (await blockedFor(adminLimit)) await alertAdmin("Login da administracao bloqueado por 15 minutos depois de 5 tentativas erradas");
     back("/admin/login", "error", "Credenciais invalidas.");
   }
+  if (twoFactorResetOn()) {
+    if (await activeTwoFactor()) {
+      await disableTwoFactor();
+      await audit(null, "admin.2fa_reset", "admin", null);
+      await alertAdmin("Dois fatores da administracao desligados pela configuracao ADMIN_2FA_RESET");
+    }
+  } else if (await activeTwoFactor()) {
+    await createAdminPending();
+    redirect("/admin/login/codigo");
+  }
   await createAdminSession();
   redirect("/admin");
+}
+
+export async function adminVerifyCode(formData: FormData) {
+  if (!(await hasAdminPending())) back("/admin/login", "error", "Tempo esgotado. Entre de novo com e-mail e senha.");
+  const ip = await clientIp();
+  const limit = [{ action: "admin_2fa", subject: `ip:${ip}`, max: 5, windowMin: 15 }];
+  const wait = await blockedFor(limit);
+  if (wait) back("/admin/login/codigo", "error", tooManyMessage(wait));
+  const kind = await checkSecondFactor(str(formData, "code"));
+  if (!kind) {
+    await recordAttempt("admin_2fa", [`ip:${ip}`]);
+    if (await blockedFor(limit)) await alertAdmin("Codigo de dois fatores da administracao bloqueado por 15 minutos depois de 5 codigos errados");
+    back("/admin/login/codigo", "error", "Codigo invalido ou ja usado.");
+  }
+  await clearAdminPending();
+  if (kind === "recovery") await audit(null, "admin.2fa_recovery_used", "admin", null);
+  await createAdminSession();
+  redirect("/admin");
+}
+
+const RECOVERY_COOKIE = "ponte_admin_recovery";
+
+export async function enableAdminTwoFactor(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  if (twoFactorResetOn()) back("/admin/seguranca", "error", "Remova ADMIN_2FA_RESET da Vercel antes de ativar.");
+  const codes = await enableTwoFactor(str(formData, "code").replace(/\s/g, ""));
+  if (!codes) back("/admin/seguranca", "error", "Codigo invalido. Confira o codigo atual no aplicativo e tente de novo.");
+  await audit(null, "admin.2fa_enabled", "admin", null);
+  (await cookies()).set(RECOVERY_COOKIE, codes.join(","), {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/admin",
+    maxAge: 60 * 10,
+    secure: process.env.NODE_ENV === "production",
+  });
+  redirect("/admin/seguranca");
+}
+
+export async function dismissRecoveryCodes() {
+  if (!(await isAdmin())) redirect("/admin/login");
+  (await cookies()).delete({ name: RECOVERY_COOKIE, path: "/admin" });
+  redirect("/admin/seguranca");
+}
+
+export async function disableAdminTwoFactor(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  if (!(await checkSecondFactor(str(formData, "code")))) {
+    back("/admin/seguranca", "error", "Codigo invalido ou ja usado. Os dois fatores continuam ligados.");
+  }
+  await disableTwoFactor();
+  await audit(null, "admin.2fa_disabled", "admin", null);
+  back("/admin/seguranca", "msg", "Dois fatores desligados. O login da administracao volta a pedir so e-mail e senha.");
 }
 
 export async function adminLogout() {

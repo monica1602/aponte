@@ -67,6 +67,41 @@ export async function createAdminSession() {
   });
 }
 
+const ADMIN_PENDING_COOKIE = "ponte_admin_pending";
+const ADMIN_PENDING_TTL_S = 60 * 5;
+
+/** Password step done; the second factor is still missing. */
+export async function createAdminPending() {
+  const exp = String(Date.now() + ADMIN_PENDING_TTL_S * 1000);
+  const sig = adminSig(`pending:${exp}`, process.env.ADMIN_PASSWORD ?? "").toString("hex");
+  const store = await cookies();
+  store.set(ADMIN_PENDING_COOKIE, `${exp}.${sig}`, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/admin",
+    maxAge: ADMIN_PENDING_TTL_S,
+    secure: process.env.NODE_ENV === "production",
+  });
+}
+
+export async function hasAdminPending(): Promise<boolean> {
+  const secret = process.env.ADMIN_PASSWORD;
+  if (!secret) return false;
+  const raw = (await cookies()).get(ADMIN_PENDING_COOKIE)?.value;
+  if (!raw) return false;
+  const dot = raw.lastIndexOf(".");
+  const exp = raw.slice(0, dot);
+  const sig = raw.slice(dot + 1);
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  const expected = adminSig(`pending:${exp}`, secret);
+  const got = Buffer.from(sig, "hex");
+  return got.length === expected.length && crypto.timingSafeEqual(got, expected);
+}
+
+export async function clearAdminPending() {
+  (await cookies()).delete({ name: ADMIN_PENDING_COOKIE, path: "/admin" });
+}
+
 export async function isAdmin(): Promise<boolean> {
   const secret = process.env.ADMIN_PASSWORD;
   if (!secret) return false;
