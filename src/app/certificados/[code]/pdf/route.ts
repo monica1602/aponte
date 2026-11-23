@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { siteUrl } from "@/lib/session";
 import { certificatePdf, type CertificateData } from "@/lib/certificate-pdf";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
      LEFT JOIN events e ON e.id = c.event_id WHERE c.verification_code = ?`
   ).get(code)) as CertificateData | undefined;
   if (!certificate) return new Response("Certificado nao encontrado.", { status: 404 });
-  const url = `${new URL(request.url).origin}/certificados/${certificate.verification_code}`;
+  const url = `${await siteUrl()}/certificados/${certificate.verification_code}`;
   const pdf = await certificatePdf(certificate, url);
   return new Response(Buffer.from(pdf), {
     headers: {
