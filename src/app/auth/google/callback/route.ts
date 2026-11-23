@@ -4,6 +4,7 @@ import { createSession } from "@/lib/auth";
 import { getDb, type Invite, type User } from "@/lib/db";
 import { baseUrl, fetchGoogleUser } from "@/lib/oauth";
 import { recordLegalAcceptance } from "@/lib/legal-acceptance";
+import { recordConsent } from "@/lib/consents";
 
 function fail(text: string) {
   return NextResponse.redirect(`${baseUrl()}/login?error=${encodeURIComponent(text)}`);
@@ -62,6 +63,7 @@ export async function GET(req: NextRequest) {
         consents.image ? 1 : 0, consents.acceptedAt, consents.acceptedAt
       );
     await recordLegalAcceptance(Number(res.lastInsertRowid), "google");
+    if (consents.image) await recordConsent(Number(res.lastInsertRowid), "image", true, "google");
     user = await db
       .prepare("SELECT * FROM users WHERE id = ?")
       .get(Number(res.lastInsertRowid)) as unknown as User;

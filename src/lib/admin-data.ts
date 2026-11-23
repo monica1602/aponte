@@ -1,5 +1,6 @@
 import { getDb, type Profile } from "./db";
 import { legalAcceptanceHistory } from "./legal-acceptance";
+import { consentHistory } from "./consents";
 import { splitCsv } from "./session";
 import { PROJECT_STATUS } from "./catalog";
 import { eventTimeMs } from "./event-time";
@@ -209,5 +210,5 @@ export async function getPersonDetail(id: number) {
     db.prepare("SELECT e.id, e.title, e.starts_at, r.status FROM event_registrations r JOIN events e ON e.id = r.event_id WHERE r.user_id = ? ORDER BY e.starts_at DESC").all(id),
     db.prepare("SELECT title, status, created_at FROM learning_goals WHERE mentee_id = ? ORDER BY created_at DESC").all(id),
   ]);
-  return { user, row, contributions, registrations, goals, acceptances: await legalAcceptanceHistory(id) };
+  return { user, row, contributions, registrations, goals, acceptances: await legalAcceptanceHistory(id), consents: await consentHistory(id) };
 }

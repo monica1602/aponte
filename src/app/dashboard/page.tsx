@@ -205,6 +205,10 @@ function ProfileEditor({ user }: { user: User }) {
           <input name="public_profile_consent" type="checkbox" defaultChecked={Boolean(user.public_profile_consent)} className="mt-0.5" />
           <span>Permito que meu nome, resumo, bio, habilidades, rede e contribuicoes aparecam no perfil publico. Posso revogar essa permissao a qualquer momento.</span>
         </label>
+        <label className="flex items-start gap-2 text-xs leading-relaxed text-muted">
+          <input name="image_consent" type="checkbox" defaultChecked={Boolean(user.image_consent)} className="mt-0.5" />
+          <span>Autorizo o uso da minha imagem em registros e comunicacoes da Ponte. Esta autorizacao e opcional e posso revoga-la a qualquer momento.</span>
+        </label>
         <button className={btnSecondaryCls}>Salvar perfil</button>
       </form>
     </Card>

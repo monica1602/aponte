@@ -240,6 +240,16 @@ CREATE TABLE IF NOT EXISTS event_registrations (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(event_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS consent_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  consent TEXT NOT NULL,
+  event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+  granted INTEGER NOT NULL,
+  source TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS consent_events_user ON consent_events (user_id, consent);
 CREATE TABLE IF NOT EXISTS availability (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -481,6 +491,7 @@ async function init() {
     await seedEducation(db);
     await upgradeDemoPasswords(db);
     await backfillLegalAcceptances(db);
+    await backfillConsents(db);
   });
 }
 
@@ -529,6 +540,33 @@ async function backfillLegalAcceptances(db: Db) {
        SELECT u.id, ?, 1, 'anterior', u.${col} FROM users u
        WHERE u.${col} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM legal_acceptances a WHERE a.user_id = u.id AND a.doc = ?)`
     ).run(doc, doc);
+  }
+}
+
+/** Consentimentos dados antes do historico recebem uma linha com o estado atual e a data ja gravada. */
+async function backfillConsents(db: Db) {
+  const userConsents: [string, string, string][] = [
+    ["public_profile", "u.public_profile_consent = 1", "COALESCE(u.public_profile_consent_at, u.created_at)"],
+    ["image", "u.image_consent = 1", "COALESCE(u.employment_terms_accepted_at, u.created_at)"],
+  ];
+  for (const [consent, where, at] of userConsents) {
+    await db.prepare(
+      `INSERT INTO consent_events (user_id, consent, event_id, granted, source, created_at)
+       SELECT u.id, ?, NULL, 1, 'anterior', ${at} FROM users u
+       WHERE ${where} AND NOT EXISTS (SELECT 1 FROM consent_events c WHERE c.user_id = u.id AND c.consent = ? AND c.event_id IS NULL)`
+    ).run(consent, consent);
+  }
+  const eventConsents: [string, string, string][] = [
+    ["event_privacy", "1 = 1", "r.lgpd_accepted_at"],
+    ["event_communications", "r.communication_consent = 1", "r.created_at"],
+    ["event_image", "r.image_consent = 1", "r.created_at"],
+  ];
+  for (const [consent, where, at] of eventConsents) {
+    await db.prepare(
+      `INSERT INTO consent_events (user_id, consent, event_id, granted, source, created_at)
+       SELECT r.user_id, ?, r.event_id, 1, 'anterior', ${at} FROM event_registrations r
+       WHERE ${where} AND NOT EXISTS (SELECT 1 FROM consent_events c WHERE c.user_id = r.user_id AND c.consent = ? AND c.event_id = r.event_id)`
+    ).run(consent, consent);
   }
 }
 

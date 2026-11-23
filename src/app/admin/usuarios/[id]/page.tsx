@@ -7,6 +7,7 @@ import { AdminNav } from "@/components/admin-nav";
 import { Badge, Card, ROLE_LABELS } from "@/components/ui";
 import { externalHref } from "@/lib/url";
 import { ACCEPTANCE_SOURCE_PT, LEGAL_DOC_PT } from "@/lib/legal-acceptance";
+import { CONSENT_PT, CONSENT_SOURCE_PT } from "@/lib/consents";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Admin — dados do cadastro" };
@@ -56,7 +57,7 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
   if (!(await isAdmin())) redirect("/admin/login");
   const detail = await getPersonDetail(Number((await params).id));
   if (!detail || !detail.row) notFound();
-  const { user, row, contributions, registrations, goals, acceptances } = detail;
+  const { user, row, contributions, registrations, goals, acceptances, consents } = detail;
   const role = String(user.role);
   const back = role === "mentee" ? "/admin/mentorados" : role === "mentor" ? "/admin/mentores" : "/admin/empresas";
   const profileEntries = Object.entries(row.profile).filter(([, v]) => (Array.isArray(v) ? v.length : v));
@@ -109,6 +110,23 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
                 {acceptances.map((a, i) => (
                   <tr key={i} className="border-t border-line">
                     <td className="py-1">{LEGAL_DOC_PT[a.doc] ?? a.doc}</td><td>{a.version}</td><td>{a.accepted_at}</td><td>{ACCEPTANCE_SOURCE_PT[a.source] ?? a.source}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+        <Card className="lg:col-span-2">
+          <h2 className="mb-3 font-semibold">Historico de consentimentos</h2>
+          {consents.length === 0 ? <p className="text-sm text-muted">—</p> : (
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs text-muted"><tr><th className="py-1 font-medium">Consentimento</th><th className="font-medium">Evento</th><th className="font-medium">Situacao</th><th className="font-medium">Data</th><th className="font-medium">Origem</th></tr></thead>
+              <tbody>
+                {consents.map((c, i) => (
+                  <tr key={i} className="border-t border-line">
+                    <td className="py-1">{CONSENT_PT[c.consent] ?? c.consent}</td>
+                    <td>{c.event_id === null ? "—" : c.event_title ?? "Evento removido"}</td>
+                    <td>{Number(c.granted) ? "Concedido" : "Revogado"}</td><td>{c.created_at}</td><td>{CONSENT_SOURCE_PT[c.source] ?? c.source}</td>
                   </tr>
                 ))}
               </tbody>

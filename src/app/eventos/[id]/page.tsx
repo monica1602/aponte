@@ -4,9 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb, type PlatformEvent } from "@/lib/db";
-import { deleteEvent, requestEventAccess } from "@/lib/actions";
+import { deleteEvent, requestEventAccess, updateEventConsents } from "@/lib/actions";
 import { DeleteConfirm } from "@/components/delete-confirm";
-import { Badge, Card, Flash, btnCls } from "@/components/ui";
+import { Badge, Card, Flash, btnCls, btnSecondaryCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Evento — Ponte" };
@@ -31,9 +31,10 @@ export default async function EventoPage({
     )
     .get(Number(id)) as (PlatformEvent & { owner_name: string; approved: number }) | undefined;
   if (!e) notFound();
-  const registration = user
-    ? (await db.prepare("SELECT status FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string } | undefined)?.status
+  const reg = user
+    ? (await db.prepare("SELECT status, communication_consent, image_consent FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string; communication_consent: number; image_consent: number } | undefined)
     : undefined;
+  const registration = reg?.status;
   const full = e.capacity !== null && e.approved >= e.capacity;
   const ret = `/eventos/${e.id}`;
   const showLink = e.online_url && registration === "approved";
@@ -69,7 +70,16 @@ export default async function EventoPage({
         ) : e.owner_id === user.id ? (
           <p className="text-sm text-muted">Voce organiza este evento. Gerencie as inscricoes em Meus eventos.</p>
         ) : registration ? (
-          <Badge kind={registration} label={registration === "approved" ? "Inscricao confirmada" : registration === "requested" ? "Aguardando aprovacao" : "Lista de espera"} />
+          <>
+            <Badge kind={registration} label={registration === "approved" ? "Inscricao confirmada" : registration === "requested" ? "Aguardando aprovacao" : "Lista de espera"} />
+            <form action={updateEventConsents} className="mt-4 space-y-2">
+              <input type="hidden" name="event_id" value={e.id} />
+              <p className="text-sm font-medium">Suas permissoes neste evento</p>
+              <label className="flex items-start gap-2 text-sm text-muted"><input name="communications" type="checkbox" defaultChecked={Boolean(reg!.communication_consent)} className="mt-1" />Quero receber comunicacoes sobre eventos (opcional).</label>
+              <label className="flex items-start gap-2 text-sm text-muted"><input name="image" type="checkbox" defaultChecked={Boolean(reg!.image_consent)} className="mt-1" />Autorizo uso de imagem deste evento (opcional).</label>
+              <button className={btnSecondaryCls}>Salvar permissoes</button>
+            </form>
+          </>
         ) : (
           <form action={requestEventAccess} className="space-y-2">
             <input type="hidden" name="event_id" value={e.id} />

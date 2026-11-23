@@ -25,6 +25,7 @@ import { checkInWindow, spTime } from "./event-time";
 import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate-limit";
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
 import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
+import { recordConsent, recordConsentChanges } from "./consents";
 import { createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
@@ -271,6 +272,8 @@ export async function registerAccount(formData: FormData) {
   ).run(email, hashPassword(password), name, role, REQUIRE_APPROVAL ? "pending" : "active", formData.get("image_consent") === "on" ? 1 : 0);
   const newUserId = Number(result.lastInsertRowid);
   await recordLegalAcceptance(newUserId, "cadastro");
+  await recordConsent(newUserId, "public_profile", true, "cadastro");
+  if (formData.get("image_consent") === "on") await recordConsent(newUserId, "image", true, "cadastro");
   await recordAttempt("signup", [`ip:${ip}`]);
   await sendEmailVerification(newUserId, email, name, role);
   await audit(null, REQUIRE_APPROVAL ? "account.requested" : "account.created", "user", newUserId);
@@ -350,6 +353,10 @@ export async function changeInitialPassword(formData: FormData) {
       code_of_conduct_accepted_at = datetime('now') WHERE id = ?`
   ).run(hashPassword(password), formData.get("image_consent") === "on" ? 1 : 0, user!.id);
   await recordLegalAcceptance(user!.id, "primeiro_acesso");
+  await recordConsentChanges(user!.id, [
+    ["public_profile", !!user!.public_profile_consent, true],
+    ["image", !!user!.image_consent, formData.get("image_consent") === "on"],
+  ], "primeiro_acesso");
   await audit(user!.id, "password.initial_changed", "user", user!.id);
   redirect("/dashboard");
 }
@@ -389,6 +396,7 @@ export async function deleteAccount(formData: FormData) {
   await destroySession();
   await getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM legal_acceptances WHERE user_id = ?").run(user.id);
+  await getDb().prepare("DELETE FROM consent_events WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);
   await alertAdmin(`Conta excluida pelo proprio usuario: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   redirect(`/login?msg=${encodeURIComponent("Sua conta e seus dados foram excluidos.")}`);
@@ -396,16 +404,24 @@ export async function deleteAccount(formData: FormData) {
 
 export async function updateProfile(formData: FormData) {
   const user = await me();
+  const publicProfile = formData.get("public_profile_consent") === "on";
+  const image = formData.get("image_consent") === "on";
   await getDb()
     .prepare(`UPDATE users SET headline = ?, bio = ?, skills = ?,
-      public_profile_consent = ?, public_profile_consent_at = CASE WHEN ? = 1 THEN COALESCE(public_profile_consent_at, datetime('now')) ELSE NULL END
+      public_profile_consent = ?, public_profile_consent_at = CASE WHEN ? = 1 THEN COALESCE(public_profile_consent_at, datetime('now')) ELSE NULL END,
+      image_consent = ?
       WHERE id = ?`)
     .run(
       str(formData, "headline"), str(formData, "bio"), str(formData, "skills"),
-      formData.get("public_profile_consent") === "on" ? 1 : 0,
-      formData.get("public_profile_consent") === "on" ? 1 : 0,
+      publicProfile ? 1 : 0,
+      publicProfile ? 1 : 0,
+      image ? 1 : 0,
       user.id
     );
+  await recordConsentChanges(user.id, [
+    ["public_profile", !!user.public_profile_consent, publicProfile],
+    ["image", !!user.image_consent, image],
+  ], "perfil");
   await alertAdmin(`Cadastro atualizado: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   back("/dashboard", "msg", "Perfil atualizado.");
 }
@@ -748,12 +764,35 @@ export async function requestEventAccess(formData: FormData) {
   } catch {
     back(ret, "error", "Voce ja possui uma inscricao neste evento.");
   }
+  await recordConsent(user.id, "event_privacy", true, "inscricao_evento", eventId);
+  if (formData.get("communications") === "on") await recordConsent(user.id, "event_communications", true, "inscricao_evento", eventId);
+  if (formData.get("image") === "on") await recordConsent(user.id, "event_image", true, "inscricao_evento", eventId);
   const messages: Record<string, string> = {
     approved: "Inscricao confirmada.",
     requested: "Solicitacao enviada para aprovacao do organizador.",
     waitlist: "Evento lotado. Voce entrou na lista de espera.",
   };
   back(ret, "msg", messages[status]);
+}
+
+export async function updateEventConsents(formData: FormData) {
+  const user = await me();
+  const eventId = Number(formData.get("event_id"));
+  const ret = `/eventos/${eventId}`;
+  const db = getDb();
+  const reg = await db
+    .prepare("SELECT id, communication_consent, image_consent FROM event_registrations WHERE event_id = ? AND user_id = ?")
+    .get(eventId, user.id) as { id: number; communication_consent: number; image_consent: number } | undefined;
+  if (!reg) back(ret, "error", "Voce nao esta inscrito neste evento.");
+  const communications = formData.get("communications") === "on";
+  const image = formData.get("image") === "on";
+  await db.prepare("UPDATE event_registrations SET communication_consent = ?, image_consent = ? WHERE id = ?")
+    .run(communications ? 1 : 0, image ? 1 : 0, reg!.id);
+  await recordConsentChanges(user.id, [
+    ["event_communications", !!reg!.communication_consent, communications],
+    ["event_image", !!reg!.image_consent, image],
+  ], "evento", eventId);
+  back(ret, "msg", "Permissoes atualizadas.");
 }
 
 export async function reviewEventRegistration(formData: FormData) {
