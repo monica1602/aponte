@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { emailUser } from "@/lib/user-email";
+import { runRetention } from "@/lib/retention";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -14,7 +15,8 @@ export async function GET(request: Request) {
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
     return new Response("Unauthorized", { status: 401 });
   }
-  if (!process.env.RESEND_API_KEY) return Response.json({ sent: 0, skipped: "RESEND_API_KEY ausente" });
+  const retention = await runRetention();
+  if (!process.env.RESEND_API_KEY) return Response.json({ sent: 0, skipped: "RESEND_API_KEY ausente", retention });
 
   const db = getDb();
   const rows = (await db.prepare(
@@ -41,5 +43,5 @@ export async function GET(request: Request) {
     );
     sent++;
   }
-  return Response.json({ sent });
+  return Response.json({ sent, retention });
 }

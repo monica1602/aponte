@@ -26,6 +26,7 @@ import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
 import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
+import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
@@ -866,10 +867,10 @@ export async function confirmSafeHome(formData: FormData) {
   const ret = str(formData, "return") || "/dashboard";
   const db = getDb();
   const row = (await db.prepare(
-    `SELECT r.id, r.safe_home_at, e.id AS event_id, e.title, e.owner_id FROM event_registrations r JOIN events e ON e.id = r.event_id
+    `SELECT r.id, r.safe_home_at, e.id AS event_id, e.title, e.owner_id, e.ends_at FROM event_registrations r JOIN events e ON e.id = r.event_id
      WHERE r.id = ? AND r.user_id = ? AND e.modality IN ('in_person','hybrid') AND r.checked_in_at IS NOT NULL`
-  ).get(registrationId, user.id)) as { id: number; safe_home_at: string | null; event_id: number; title: string; owner_id: number } | undefined;
-  if (!row) back(ret, "error", "Confirmacao indisponivel: ela so vale para eventos presenciais ou hibridos em que voce fez check-in.");
+  ).get(registrationId, user.id)) as { id: number; safe_home_at: string | null; event_id: number; title: string; owner_id: number; ends_at: string } | undefined;
+  if (!row || !safeHomeOpen(row.ends_at)) back(ret, "error", "Confirmacao indisponivel: ela so vale ate 2 dias apos o fim de eventos presenciais ou hibridos em que voce fez check-in.");
   if (row.safe_home_at) back(ret, "msg", "Sua chegada ja estava confirmada.");
   await db.prepare("UPDATE event_registrations SET safe_home_at = COALESCE(safe_home_at, datetime('now')) WHERE id = ?")
     .run(registrationId);
@@ -936,12 +937,13 @@ export async function issueCertificate(formData: FormData) {
   const recipientId = Number(formData.get("recipient_id"));
   const eventId = Number(formData.get("event_id"));
   const db = getDb();
-  const event = await db.prepare("SELECT id, title FROM events WHERE id = ? AND owner_id = ?")
-    .get(eventId, user.id) as { id: number; title: string } | undefined;
+  const event = await db.prepare("SELECT id, title, ends_at FROM events WHERE id = ? AND owner_id = ?")
+    .get(eventId, user.id) as { id: number; title: string; ends_at: string } | undefined;
   const attended = await db.prepare(
     "SELECT id FROM event_registrations WHERE event_id = ? AND user_id = ? AND checked_in_at IS NOT NULL"
   ).get(eventId, recipientId);
   if (!event || !attended) back("/dashboard", "error", "Certificados so podem ser emitidos para participantes presentes.");
+  if (!canIssueCertificate(event!.ends_at)) back("/dashboard", "error", CERTIFICATE_EXPIRED);
   const code = crypto.randomBytes(9).toString("hex").toUpperCase();
   try {
     const result = await db.prepare(
@@ -950,6 +952,33 @@ export async function issueCertificate(formData: FormData) {
     await audit(user.id, "certificate.issued", "certificate", Number(result.lastInsertRowid));
   } catch {
     back("/dashboard", "error", "Ja existe certificado para esta pessoa neste evento.");
+  }
+  redirect(`/certificados/${code}`);
+}
+
+const CERTIFICATE_EXPIRED = "O prazo para emitir o certificado terminou 1 ano apos o fim do evento.";
+
+export async function selfIssueCertificate(formData: FormData) {
+  const user = await me();
+  requireVerified(user, "/dashboard");
+  const db = getDb();
+  const reg = (await db.prepare(
+    `SELECT r.event_id, e.title, e.ends_at FROM event_registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ? AND r.user_id = ? AND r.checked_in_at IS NOT NULL`
+  ).get(Number(formData.get("registration_id")), user.id)) as { event_id: number; title: string; ends_at: string } | undefined;
+  if (!reg) back("/dashboard", "error", "Certificados so podem ser emitidos por quem fez check-in no evento.");
+  const existing = (await db.prepare("SELECT verification_code FROM certificates WHERE user_id = ? AND event_id = ?")
+    .get(user.id, reg!.event_id)) as { verification_code: string } | undefined;
+  if (existing) redirect(`/certificados/${existing.verification_code}`);
+  if (!canIssueCertificate(reg!.ends_at)) back("/dashboard", "error", CERTIFICATE_EXPIRED);
+  const code = crypto.randomBytes(9).toString("hex").toUpperCase();
+  try {
+    const result = await db.prepare(
+      "INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code) VALUES (?,?,?,?,?)"
+    ).run(user.id, reg!.event_id, user.id, reg!.title, code);
+    await audit(user.id, "certificate.self_issued", "certificate", Number(result.lastInsertRowid));
+  } catch {
+    back("/dashboard", "error", "Ja existe certificado seu neste evento.");
   }
   redirect(`/certificados/${code}`);
 }

@@ -4,7 +4,10 @@ export type LegalVersion = { version: number; effectiveFrom: string; summary: st
 /** Versoes publicadas de cada documento. Uma versao nova entra no fim da lista; as anteriores nunca mudam. */
 export const LEGAL_VERSIONS: Record<LegalDoc, LegalVersion[]> = {
   terms: [{ version: 1, effectiveFrom: "2026-11-23", summary: "Primeira versao formal dos Termos de Uso." }],
-  privacy: [{ version: 1, effectiveFrom: "2026-11-23", summary: "Texto em vigor quando o versionamento comecou." }],
+  privacy: [
+    { version: 1, effectiveFrom: "2026-11-23", summary: "Texto em vigor quando o versionamento comecou." },
+    { version: 2, effectiveFrom: "2026-11-23", summary: "Inclui a secao Prazos de guarda: auditoria, inscricoes, presenca, confirmacao de chegada e certificados." },
+  ],
   conduct: [{ version: 1, effectiveFrom: "2026-11-23", summary: "Texto em vigor quando o versionamento comecou." }],
 };
 

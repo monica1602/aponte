@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS certificates (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
   mentorship_id INTEGER REFERENCES mentorships(id) ON DELETE SET NULL,
-  issued_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  issued_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
   verification_code TEXT NOT NULL UNIQUE,
   issued_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -525,6 +525,19 @@ async function ensureMigrations(db: Db) {
     message: "TEXT NOT NULL DEFAULT ''",
     requested_by: "TEXT NOT NULL DEFAULT 'mentee'",
   });
+  await keepCertificatesWithoutIssuer(db);
+}
+
+/** Certificados continuam validos quando quem emitiu exclui a conta. No SQLite as chaves estrangeiras nao sao aplicadas. */
+async function keepCertificatesWithoutIssuer(db: Db) {
+  if (db.dialect !== "postgres") return;
+  const fk = (await db.prepare(
+    "SELECT delete_rule FROM information_schema.referential_constraints WHERE constraint_name = 'certificates_issued_by_fkey'"
+  ).get()) as { delete_rule: string } | undefined;
+  if (fk?.delete_rule !== "CASCADE") return;
+  await db.exec(`ALTER TABLE certificates ALTER COLUMN issued_by DROP NOT NULL;
+    ALTER TABLE certificates DROP CONSTRAINT certificates_issued_by_fkey;
+    ALTER TABLE certificates ADD CONSTRAINT certificates_issued_by_fkey FOREIGN KEY (issued_by) REFERENCES users(id) ON DELETE SET NULL;`);
 }
 
 /** Contas com aceite gravado antes do versionamento recebem a versao 1, com a data original. */
