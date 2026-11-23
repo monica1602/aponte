@@ -68,7 +68,7 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <Link href={`/pessoas/${p.id}`} className="font-semibold text-accent hover:underline">{p.name}</Link>
-                    <p className="text-xs text-muted">{ROLE_LABELS[p.role]} · {p.email}</p>
+                    <p className="text-xs text-muted">{ROLE_LABELS[p.role]}{p.status === "active" ? ` · ${p.email}` : ""}</p>
                   </div>
                   <Badge kind={p.status} label={p.status === "active" ? "Ativa" : p.requested_by === "company" ? "Convite enviado" : p.requested_by === "mentor" ? (tab === "mentores" ? "Convite recebido" : "Convite enviado") : "Pendente"} />
                 </div>

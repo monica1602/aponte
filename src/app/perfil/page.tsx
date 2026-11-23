@@ -64,6 +64,13 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
               <Field label="Portfolio (opcional)"><input name="portfolio" type="text" inputMode="url" placeholder="seusite.com" defaultValue={bareUrl(p.portfolio)} className={inputCls} /></Field>
             </div>
           )}
+          <label className="flex items-start gap-2 text-sm">
+            <input name="show_email" type="checkbox" defaultChecked={Boolean(user.show_email)} className="mt-1" />
+            <span>
+              Mostrar meu e-mail para todos os cadastrados
+              <span className="block text-xs text-muted">Desligado, seu e-mail aparece so para quem tem mentoria, vinculo de empresa ou projeto ativo com voce.</span>
+            </span>
+          </label>
         </Card>
 
         {!isCompany && (

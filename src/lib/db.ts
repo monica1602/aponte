@@ -18,6 +18,7 @@ export interface User {
   image_consent: number;
   public_profile_consent: number;
   public_profile_consent_at: string | null;
+  show_email: number;
   employment_terms_accepted_at: string | null;
   code_of_conduct_accepted_at: string | null;
   created_at: string;
@@ -449,6 +450,7 @@ async function ensureMigrations(db: Db) {
     public_profile_consent_at: "TEXT",
     employment_terms_accepted_at: "TEXT",
     code_of_conduct_accepted_at: "TEXT",
+    show_email: "INTEGER NOT NULL DEFAULT 0",
   });
   await addColumns(db, "events", {
     category: "TEXT NOT NULL DEFAULT ''",
@@ -545,6 +547,22 @@ export function profileCompleteness(p: Profile, role: string): number {
 
 export async function notify(userId: number, body: string, link = "") {
   await getDb().prepare("INSERT INTO notifications (user_id, body, link) VALUES (?,?,?)").run(userId, body, link);
+}
+
+/** E-mail is shown to the person, to everyone logged in if they opted in, and to active connections (mentorship, company link or same project). */
+export async function canSeeEmail(viewerId: number | null, target: { id: number; show_email: number }): Promise<boolean> {
+  if (!viewerId) return false;
+  if (viewerId === target.id || target.show_email) return true;
+  const a = viewerId, b = target.id;
+  const members = `SELECT owner_id AS uid, id AS pid FROM projects
+    UNION SELECT user_id, project_id FROM project_applications WHERE status = 'accepted'
+    UNION SELECT mentor_id, project_id FROM project_access WHERE revoked_at IS NULL`;
+  const row = await getDb().prepare(
+    `SELECT 1 FROM mentorships WHERE status = 'active' AND ((mentor_id = ? AND mentee_id = ?) OR (mentor_id = ? AND mentee_id = ?))
+     UNION SELECT 1 FROM company_links WHERE status = 'active' AND ((company_id = ? AND member_id = ?) OR (company_id = ? AND member_id = ?))
+     UNION SELECT 1 FROM (${members}) x JOIN (${members}) y ON x.pid = y.pid WHERE x.uid = ? AND y.uid = ?`
+  ).get(a, b, b, a, a, b, b, a, a, b);
+  return !!row;
 }
 
 export async function getUser(id: number): Promise<User | null> {

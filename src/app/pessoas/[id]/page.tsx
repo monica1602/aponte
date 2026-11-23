@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDb, getUser } from "@/lib/db";
+import { canSeeEmail, getDb, getUser } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { inviteToCompany, requestMentorship, toggleEndorsement } from "@/lib/actions";
 import { Badge, Card, Empty, Flash, SkillChips, TYPE_LABELS, btnCls, inputCls } from "@/components/ui";
@@ -33,6 +33,7 @@ export default async function PessoaPage({
   if (!profile.public_profile_consent && viewer?.id !== profile.id) notFound();
   const db = getDb();
   const ret = `/pessoas/${profile.id}`;
+  const showEmail = await canSeeEmail(viewer?.id ?? null, profile);
 
   const isMentorSide = profile.role === "mentor" || profile.role === "company";
 
@@ -131,7 +132,9 @@ export default async function PessoaPage({
         </div>
         {viewer && (
           <p className="mt-4 text-sm text-muted">
-            Contato: <span className="font-mono">{profile.email}</span>
+            {showEmail
+              ? <>Contato: <span className="font-mono">{profile.email}</span></>
+              : "O contato aparece quando voces tiverem uma mentoria, um vinculo ou um projeto ativo."}
           </p>
         )}
       </Card>
