@@ -159,7 +159,7 @@ function SelfCheckIn({ r }: { r: RegistrationRow }) {
 }
 
 function MyCertificate({ r }: { r: RegistrationRow }) {
-  if (r.certificate_code) return <Link href={`/certificados/${r.certificate_code}`} className="mt-2 inline-block text-xs text-accent hover:underline">Ver meu certificado →</Link>;
+  if (r.certificate_code) return <p className="mt-2 flex gap-3 text-xs"><Link href={`/certificados/${r.certificate_code}`} className="text-accent hover:underline">Ver meu certificado →</Link><a href={`/certificados/${r.certificate_code}/pdf`} download className="text-accent hover:underline">Baixar PDF</a></p>;
   if (!r.checked_in_at || !canIssueCertificate(r.ends_at)) return null;
   return <form action={selfIssueCertificate} className="mt-2"><input type="hidden" name="registration_id" value={r.id} /><button className="text-xs text-accent hover:underline">Emitir meu certificado</button></form>;
 }
