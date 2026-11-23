@@ -222,6 +222,8 @@ export default async function RootLayout({
               <Link href="/sou-mentor" className="hover:text-fg">Sou Mentor</Link>
               <Link href="/sou-mentorado" className="hover:text-fg">Sou Mentorado</Link>
               <Link href="/sou-empresa" className="hover:text-fg">Sou Empresa</Link>
+              <Link href="/termos" className="hover:text-fg">Termos</Link>
+              <Link href="/privacidade" className="hover:text-fg">Privacidade</Link>
               <Link href="/conduta" className="hover:text-fg">Conduta</Link>
             </nav>
             <div className="flex items-center gap-4">

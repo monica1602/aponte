@@ -2,6 +2,8 @@ import Link from "next/link";
 import { PASSWORD_HINT } from "@/lib/password-policy";
 import { registerAccount } from "@/lib/actions";
 import { Card, Flash, btnCls, inputCls } from "@/components/ui";
+import { TermsAccept } from "@/components/terms-accept";
+import { TermsText } from "@/components/terms-text";
 
 export default async function SignupPage({
   searchParams,
@@ -54,10 +56,9 @@ export default async function SignupPage({
             <span>Confirme a senha</span>
             <input name="confirmation" type="password" required minLength={8} autoComplete="new-password" className={inputCls} />
           </label>
-          <label className="flex items-start gap-2 text-xs leading-relaxed text-muted">
-            <input name="employment_terms" type="checkbox" required className="mt-0.5" />
-            <span>Declaro estar ciente de que a participacao na Ponte, em eventos ou mentorias, nao cria vinculo empregaticio, promessa de contratacao ou relacao de trabalho.</span>
-          </label>
+          <TermsAccept>
+            <TermsText />
+          </TermsAccept>
           <label className="flex items-start gap-2 text-xs leading-relaxed text-muted">
             <input name="code_of_conduct" type="checkbox" required className="mt-0.5" />
             <span>Li e aceito o <Link href="/conduta" className="text-accent underline">Codigo de Conduta</Link>.</span>
