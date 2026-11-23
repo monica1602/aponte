@@ -1,6 +1,7 @@
-import { Card } from "@/components/ui";
-import { TermsText } from "@/components/terms-text";
+import { LegalPage } from "@/components/legal-page";
+import { TERMS_TEXTS } from "@/components/terms-text";
 
-export default function TermsPage() {
-  return <div className="mx-auto max-w-3xl py-10"><Card><h1 className="text-2xl font-bold">Termos de Uso</h1><div className="mt-5"><TermsText /></div></Card></div>;
+export default async function TermsPage({ searchParams }: { searchParams: Promise<{ versao?: string | string[] }> }) {
+  const sp = await searchParams;
+  return <LegalPage doc="terms" path="/termos" title="Termos de Uso" texts={TERMS_TEXTS} requested={sp.versao} />;
 }

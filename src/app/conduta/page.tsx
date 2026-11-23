@@ -1,5 +1,7 @@
-import { Card } from "@/components/ui";
+import { LegalPage } from "@/components/legal-page";
+import { CONDUCT_TEXTS } from "@/components/conduct-text";
 
-export default function CodeOfConductPage() {
-  return <div className="mx-auto max-w-3xl py-10"><Card><h1 className="text-2xl font-bold">Codigo de Conduta</h1><p className="mt-3 text-sm leading-relaxed text-muted">A Ponte existe para aprendizado, desenvolvimento profissional e troca respeitosa entre pessoas de diferentes trajetorias.</p><div className="mt-7 space-y-5 text-sm leading-relaxed text-muted"><section><h2 className="font-semibold text-fg">Compromissos</h2><p>Trate todas as pessoas com respeito. Escute perspectivas diferentes, mantenha comunicacao profissional e preserve a confidencialidade de conversas e dados compartilhados na mentoria.</p></section><section><h2 className="font-semibold text-fg">Nao e aceito</h2><p>Assedio, discriminacao, ameacas, discurso de odio, exposicao de dados pessoais, comportamento ofensivo ou uso da plataforma para atividades ilegais. Isso vale para eventos, mentorias, mensagens e espacos digitais associados a Ponte.</p></section><section><h2 className="font-semibold text-fg">Conflitos e seguranca</h2><p>Respeite limites, horarios e recusas. Em eventos presenciais, siga as orientacoes do organizador. Para relatar uma conduta inadequada, use o canal do administrador; relatos devem ser tratados com confidencialidade e sem retaliação.</p></section><section><h2 className="font-semibold text-fg">Consequencias</h2><p>Violacoes podem resultar em orientacao, restricao de recursos, suspensao ou encerramento de acesso, conforme a gravidade e a apuracao do caso.</p></section></div></Card></div>;
+export default async function CodeOfConductPage({ searchParams }: { searchParams: Promise<{ versao?: string | string[] }> }) {
+  const sp = await searchParams;
+  return <LegalPage doc="conduct" path="/conduta" title="Codigo de Conduta" texts={CONDUCT_TEXTS} requested={sp.versao} />;
 }

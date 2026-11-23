@@ -1,9 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { currentVersion, versionLabel } from "@/lib/legal-versions";
 
-export const TERMS_VERSION = "novembro de 2026";
-
-const sections: { title: string; body: ReactNode }[] = [
+const sectionsV1: { title: string; body: ReactNode }[] = [
   { title: "1. O que e a Ponte", body: <>A Ponte e uma plataforma educacional que conecta quem quer aprender com quem pode ensinar, por meio de mentorias, projetos, eventos e colaboracao. Ao criar uma conta, voce concorda com estes Termos, com o <Link href="/conduta" target="_blank" className="text-accent underline">Codigo de Conduta</Link> e com a <Link href="/privacidade" target="_blank" className="text-accent underline">Politica de Privacidade</Link>.</> },
   { title: "2. Sua conta", body: "Voce deve informar dados verdadeiros e manter seu e-mail atualizado. A conta e pessoal: nao compartilhe sua senha. Voce e responsavel pelo que for feito com ela. Contas podem ser de mentor, mentorado ou empresa, e cada papel tem recursos proprios." },
   { title: "3. Sem vinculo de trabalho", body: "A participacao em mentorias, projetos ou eventos nao cria contrato de trabalho, estagio, promessa de vaga ou qualquer vinculo empregaticio entre participantes, mentores, empresas ou a plataforma." },
@@ -20,17 +19,31 @@ const sections: { title: string; body: ReactNode }[] = [
   { title: "14. Contato", body: "Duvidas e pedidos sobre estes Termos: pelo canal da administracao da Ponte." },
 ];
 
-/** Texto dos Termos de Uso, usado na pagina /termos e na caixa de aceite do cadastro. */
-export function TermsText() {
+function Sections({ items }: { items: { title: string; body: ReactNode }[] }) {
   return (
     <div className="space-y-4 text-sm leading-relaxed text-muted">
-      <p className="text-xs">Versao de {TERMS_VERSION}</p>
-      {sections.map((s) => (
+      {items.map((s) => (
         <section key={s.title}>
           <h2 className="font-semibold text-fg">{s.title}</h2>
           <p>{s.body}</p>
         </section>
       ))}
+    </div>
+  );
+}
+
+/** Texto de cada versao publicada; as versoes antigas nunca mudam. */
+export const TERMS_TEXTS: Record<number, () => ReactNode> = {
+  1: () => <Sections items={sectionsV1} />,
+};
+
+/** Versao em vigor dos Termos, usada na caixa de aceite do cadastro. */
+export function TermsText() {
+  const v = currentVersion("terms");
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted">{versionLabel(v)}</p>
+      {TERMS_TEXTS[v.version]()}
     </div>
   );
 }
