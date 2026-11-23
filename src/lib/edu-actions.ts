@@ -5,7 +5,8 @@ import { audit, getDb, getProfile, notify, saveProfile, type Profile, type Proje
 import { back, csv, one, pick, requireUser, safeReturn, str } from "./session";
 import {
   AREAS, COMPANY_TYPES, DIFFICULTIES, HELP_TYPES, MENTEE_LEVELS, MENTOR_LEVELS, MODALITIES, OPPORTUNITY_TYPES,
-  PERIODS, PROJECT_KINDS, PROJECT_STATUS, SECTORS, SESSION_DURATIONS, TOOLS, UFS, WEEKDAYS, WEEKLY_HOURS,
+  PERIODS, PROJECT_KINDS, PROJECT_STATUS, PROJECT_VISIBILITY, SECTORS, SESSION_DURATIONS, TOOLS, UFS, WEEKDAYS, WEEKLY_HOURS,
+  visibilityColumns, type ProjectVisibility,
 } from "./catalog";
 import { getProjectForViewer } from "./projects";
 import { alertAdmin, ROLE_PT } from "./admin-alert";
@@ -122,25 +123,26 @@ export async function createProject(formData: FormData) {
   if (slots !== null && (!Number.isInteger(slots) || slots < 1 || slots > 500)) back(ret, "error", "Vagas deve ser um numero inteiro maior que zero.");
   const repo = optionalUrl(formData, "repo_url", "Repositorio", ret);
   if (kind === "open_source" && !repo) back(ret, "error", "Projetos open source precisam do link do repositorio.");
-  const visibility = "public";
+  const visibilityKey = (one(formData, "visibility", Object.keys(PROJECT_VISIBILITY)) || "public") as ProjectVisibility;
+  const { visibility, open_contribution } = visibilityColumns(visibilityKey);
   const status = formData.get("draft") === "on" ? "rascunho" : "aberto";
   const result = await getDb()
     .prepare(
       `INSERT INTO projects (owner_id, kind, title, summary, description, goals, tools, areas, difficulty, opportunity_type,
-         modality, weekly_hours, starts_on, ends_on, slots, repo_url, help_needed, status, visibility)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         modality, weekly_hours, starts_on, ends_on, slots, repo_url, help_needed, status, visibility, open_contribution)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       user.id, kind, title, str(formData, "summary", 240), description, str(formData, "goals", 1000),
       csv(tools), csv(pick(formData, "areas", AREAS)), one(formData, "difficulty", DIFFICULTIES),
       one(formData, "opportunity_type", OPPORTUNITY_TYPES), one(formData, "modality", MODALITIES),
       one(formData, "weekly_hours", WEEKLY_HOURS), str(formData, "starts_on", 10), str(formData, "ends_on", 10),
-      slots, repo, str(formData, "help_needed", 500), status, visibility
+      slots, repo, str(formData, "help_needed", 500), status, visibility, open_contribution
     );
   const id = Number(result.lastInsertRowid);
   await audit(user.id, "project.created", "project", id);
   await alertAdmin(`Novo projeto: "${title}", de ${user.name}`);
-  back(`/projetos/${id}`, "msg", "Projeto criado. Ele aparece para todos e ja pode receber candidaturas. Convide mentores e mentorados na lateral.");
+  back(`/projetos/${id}`, "msg", `Projeto criado com visibilidade "${PROJECT_VISIBILITY[visibilityKey].label}". Convide mentores e mentorados na lateral.`);
 }
 
 async function ownProject(id: number, userId: number): Promise<Project | null> {
@@ -158,6 +160,36 @@ export async function updateProjectStatus(formData: FormData) {
   await getDb().prepare("UPDATE projects SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
   await audit(user.id, "project.status", "project", id);
   back(ret, "msg", `Status atualizado para "${PROJECT_STATUS[status as keyof typeof PROJECT_STATUS]}".`);
+}
+
+export async function updateProjectVisibility(formData: FormData) {
+  const user = await requireUser();
+  const id = Number(formData.get("project_id"));
+  const ret = `/projetos/${id}`;
+  const project = await ownProject(id, user.id);
+  if (!project) back("/projetos", "error", "Projeto nao encontrado.");
+  const key = one(formData, "visibility", Object.keys(PROJECT_VISIBILITY)) as ProjectVisibility | "";
+  if (!key) back(ret, "error", "Visibilidade invalida.");
+  const { visibility, open_contribution } = visibilityColumns(key as ProjectVisibility);
+  await getDb().prepare("UPDATE projects SET visibility = ?, open_contribution = ?, updated_at = datetime('now') WHERE id = ?").run(visibility, open_contribution, id);
+  await audit(user.id, "project.visibility", "project", id);
+  back(ret, "msg", `Visibilidade atualizada para "${PROJECT_VISIBILITY[key as ProjectVisibility].label}".`);
+}
+
+export async function removeProjectParticipant(formData: FormData) {
+  const user = await requireUser();
+  const id = Number(formData.get("project_id"));
+  const memberId = Number(formData.get("user_id"));
+  const ret = `/projetos/${id}`;
+  const project = await ownProject(id, user.id);
+  if (!project) back("/projetos", "error", "Projeto nao encontrado.");
+  const res = await getDb()
+    .prepare("UPDATE project_applications SET status = 'rejected' WHERE project_id = ? AND user_id = ? AND status = 'accepted'")
+    .run(id, memberId);
+  if (!Number(res.changes)) back(ret, "error", "Participante nao encontrado.");
+  await notify(memberId, `Voce foi removido(a) do projeto "${project!.title}" por ${user.name}.`, "/meus-projetos");
+  await audit(user.id, "project.participant_removed", "project", id);
+  back(ret, "msg", "Participante removido do projeto.");
 }
 
 export async function deleteProject(formData: FormData) {
@@ -326,11 +358,26 @@ export async function applyToProject(formData: FormData) {
   if (!view) back("/projetos", "error", "Projeto nao encontrado.");
   const p = view!.project;
   if (view!.isOwner) back(ret, "error", "Voce e o responsavel por este projeto.");
+  if (p.visibility === "private") back(ret, "error", "Este projeto e particular: a participacao e so por convite.");
   if (p.status !== "aberto") back(ret, "error", "Este projeto nao esta recebendo inscricoes.");
   if (p.slots !== null && view!.participants.length >= p.slots) back(ret, "error", "Todas as vagas deste projeto ja foram preenchidas.");
   const message = str(formData, "message", 1000);
   const existing = await getDb().prepare("SELECT status FROM project_applications WHERE project_id = ? AND user_id = ?").get(id, user.id) as { status: string } | undefined;
   if (existing && existing.status !== "cancelled") back(ret, "error", "Voce ja possui uma inscricao neste projeto.");
+  if (p.open_contribution) {
+    await getDb()
+      .prepare(
+        `INSERT INTO project_applications (project_id, user_id, message, status) VALUES (?,?,?,'accepted')
+         ON CONFLICT(project_id, user_id) DO UPDATE SET status = 'accepted', message = excluded.message, created_at = datetime('now')`
+      )
+      .run(id, user.id, message);
+    const who = `${user.name} (${ROLE_PT[user.role] ?? user.role})`;
+    await audit(user.id, "project.contribution_started", "project", id);
+    await alertAdmin(`Nova contribuicao: ${who} comecou a contribuir com o projeto "${p.title}"`);
+    await notify(p.owner_id, `${who} comecou a contribuir com o projeto "${p.title}".`, ret);
+    await emailUser(p.owner_id, `${user.name} comecou a contribuir com o seu projeto`, `${who} comecou a contribuir com o projeto "${p.title}" na Ponte.${message ? ` Mensagem: "${message}"` : ""} Se precisar, voce pode remover a pessoa na pagina do projeto.`, "Ver projeto", ret);
+    back(ret, "msg", "Pronto! Voce ja contribui com este projeto. O responsavel foi avisado.");
+  }
   await getDb()
     .prepare(
       `INSERT INTO project_applications (project_id, user_id, message, status) VALUES (?,?,?,'pending')

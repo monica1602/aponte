@@ -102,6 +102,7 @@ export interface Project {
   help_needed: string;
   status: string;
   visibility: "public" | "private" | "invite";
+  open_contribution: number;
   created_at: string;
   updated_at: string;
 }
@@ -436,8 +437,6 @@ async function init() {
     await seedIfEmpty(db);
     await seedEducation(db);
     await upgradeDemoPasswords(db);
-    await db.exec("UPDATE projects SET status = 'aberto' WHERE visibility = 'private' AND status = 'andamento'");
-    await db.exec("UPDATE projects SET visibility = 'public' WHERE visibility <> 'public'");
   });
 }
 
@@ -456,6 +455,9 @@ async function ensureMigrations(db: Db) {
     city: "TEXT NOT NULL DEFAULT ''",
     state: "TEXT NOT NULL DEFAULT ''",
     organizer: "TEXT NOT NULL DEFAULT ''",
+  });
+  await addColumns(db, "projects", {
+    open_contribution: "INTEGER NOT NULL DEFAULT 0",
   });
   await addColumns(db, "event_registrations", {
     safe_home_reminded_at: "TEXT",

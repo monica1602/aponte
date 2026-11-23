@@ -284,17 +284,28 @@ export type ProjectAccessInput = {
 
 export type Viewer = { id: number; role: string } | null;
 
+function isActive(p: ProjectAccessInput): boolean {
+  return p.status !== "rascunho" && p.status !== "arquivado";
+}
+
+/** Listed for visitors (not logged in). */
 export function isPubliclyListed(p: ProjectAccessInput): boolean {
-  return p.visibility === "public" && p.status !== "rascunho" && p.status !== "arquivado";
+  return p.visibility === "public" && isActive(p);
+}
+
+/** Listed in /projetos for this viewer: public for everyone, "invite" (members only) for logged-in users. */
+export function isListedFor(viewer: Viewer, p: ProjectAccessInput): boolean {
+  if (!isActive(p)) return false;
+  return p.visibility === "public" || (p.visibility === "invite" && !!viewer);
 }
 
 export function canViewProject(
   viewer: Viewer,
   p: ProjectAccessInput,
-  ctx: { grantedMentorIds: number[]; participantIds: number[] }
+  ctx: { grantedMentorIds: number[]; participantIds: number[]; invitedIds?: number[] }
 ): boolean {
   if (viewer && viewer.id === p.ownerId) return true;
-  if (isPubliclyListed(p)) return true;
   if (p.status === "rascunho") return false;
-  return !!viewer && ctx.participantIds.includes(viewer.id);
+  if (viewer && [ctx.grantedMentorIds, ctx.participantIds, ctx.invitedIds ?? []].some((ids) => ids.includes(viewer.id))) return true;
+  return isListedFor(viewer, p);
 }

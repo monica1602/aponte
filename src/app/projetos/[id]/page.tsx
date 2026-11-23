@@ -4,10 +4,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { getProjectForViewer } from "@/lib/projects";
-import { PROJECT_KINDS, PROJECT_STATUS } from "@/lib/catalog";
+import { getProjectForViewer, isMembersOnlyProject } from "@/lib/projects";
+import { PROJECT_KINDS, PROJECT_STATUS, PROJECT_VISIBILITY, projectVisibility } from "@/lib/catalog";
 import {
-  addProjectFeedback, applyToProject, cancelApplication, deleteProject, inviteProjectMember, inviteProjectMentor, reviewApplication, revokeProjectAccess, updateProjectStatus,
+  addProjectFeedback, applyToProject, cancelApplication, deleteProject, inviteProjectMember, inviteProjectMentor, removeProjectParticipant, reviewApplication, revokeProjectAccess, updateProjectStatus, updateProjectVisibility,
 } from "@/lib/edu-actions";
 import { DeleteConfirm } from "@/components/delete-confirm";
 import { Badge, Card, Empty, Flash, ROLE_LABELS, SkillChips, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
@@ -25,6 +25,15 @@ export default async function ProjetoPage({
   const sp = await searchParams;
   const user = await getSessionUser();
   const view = await getProjectForViewer(Number(id), user);
+  if (!view && !user && await isMembersOnlyProject(Number(id))) {
+    return (
+      <div className="mx-auto max-w-lg py-16 text-center">
+        <h1 className="text-2xl font-bold">Projeto so para cadastrados</h1>
+        <p className="mt-2 text-muted">Entre para ver este projeto.</p>
+        <Link href="/login" className={`${btnCls} mt-6`}>Entrar</Link>
+      </div>
+    );
+  }
   // Same response for "does not exist" and "not allowed" so private projects are not revealed.
   if (!view) notFound();
   const { project: p, owner, isOwner, grantedMentors, participants } = view;
@@ -45,6 +54,11 @@ export default async function ProjetoPage({
     ? (await db.prepare("SELECT status FROM project_applications WHERE project_id = ? AND user_id = ?").get(p.id, user.id) as { status: string } | undefined)
     : undefined;
   const full = p.slots !== null && participants.length >= p.slots;
+  const vis = projectVisibility(p);
+  const invitedMe = !!user && !isOwner && !!(await db.prepare(
+    `SELECT 1 FROM project_mentor_invites WHERE project_id = ? AND mentor_id = ?
+     UNION SELECT 1 FROM project_member_invites WHERE project_id = ? AND user_id = ?`
+  ).get(p.id, user.id, p.id, user.id));
   const pendingMentorInvites = isOwner
     ? (await db.prepare(
         `SELECT u.id, u.name FROM project_mentor_invites i JOIN users u ON u.id = i.mentor_id WHERE i.project_id = ? ORDER BY u.name`
@@ -78,6 +92,7 @@ export default async function ProjetoPage({
           <div className="flex flex-wrap gap-1.5">
             <Badge kind={p.kind === "open_source" ? "open_source" : "projeto"} label={PROJECT_KINDS[p.kind]} />
             <Badge kind={p.status === "aberto" ? "active" : "pending"} label={PROJECT_STATUS[p.status as keyof typeof PROJECT_STATUS] ?? p.status} />
+            <Badge kind={vis === "open" ? "open_source" : "projeto"} label={vis === "open" ? "Contribuicao livre" : PROJECT_VISIBILITY[vis].label} />
           </div>
           <h1 className="mt-3 text-3xl font-bold tracking-tight">{p.title}</h1>
           <p className="mt-2 text-sm text-muted">
@@ -125,8 +140,13 @@ export default async function ProjetoPage({
 
         {!isOwner && (
           <Card>
-            {!user ? (
-              <Link href="/login" className={`${btnCls} w-full`}>Entre para participar</Link>
+            {invitedMe ? (
+              <div className="space-y-2 text-sm">
+                <p>Voce recebeu um convite para este projeto.</p>
+                <Link href="/meus-projetos" className={`${btnCls} w-full`}>Responder convite</Link>
+              </div>
+            ) : !user ? (
+              <Link href="/login" className={`${btnCls} w-full`}>{vis === "open" ? "Entre para contribuir" : "Entre para participar"}</Link>
             ) : myApplication && myApplication.status !== "cancelled" && myApplication.status !== "rejected" ? (
               <div className="space-y-3">
                 <Badge kind={myApplication.status === "accepted" ? "active" : "requested"} label={myApplication.status === "accepted" ? "Voce participa deste projeto" : "Candidatura enviada"} />
@@ -134,13 +154,16 @@ export default async function ProjetoPage({
               </div>
             ) : myApplication?.status === "rejected" ? (
               <p className="text-sm text-muted">Sua candidatura nao foi aceita desta vez.</p>
+            ) : vis === "private" ? (
+              <p className="text-sm text-muted">Projeto particular: a participacao e so por convite.</p>
             ) : p.status !== "aberto" || full ? (
               <p className="text-sm text-muted">{full ? "Vagas preenchidas." : "Este projeto nao esta recebendo inscricoes."}</p>
             ) : (
               <form action={applyToProject} className="space-y-2">
                 <input type="hidden" name="project_id" value={p.id} />
-                <label className="block space-y-1 text-sm"><span>Por que voce quer participar? (opcional)</span><textarea name="message" rows={3} maxLength={1000} className={inputCls} /></label>
-                <button className={`${btnCls} w-full`}>Candidatar-se</button>
+                {vis === "open" && <p className="text-xs text-muted">Contribuicao livre: voce entra na hora e o responsavel e avisado.</p>}
+                <label className="block space-y-1 text-sm"><span>{vis === "open" ? "O que voce pretende fazer? (opcional)" : "Por que voce quer participar? (opcional)"}</span><textarea name="message" rows={3} maxLength={1000} className={inputCls} /></label>
+                <button className={`${btnCls} w-full`}>{vis === "open" ? "Contribuir" : "Candidatar-se"}</button>
               </form>
             )}
           </Card>
@@ -157,6 +180,15 @@ export default async function ProjetoPage({
               </select>
               <button className={btnSecondaryCls}>Salvar</button>
             </form>
+            <form action={updateProjectVisibility} className="flex gap-2">
+              <input type="hidden" name="project_id" value={p.id} />
+              <label className="sr-only" htmlFor="visibility">Visibilidade</label>
+              <select id="visibility" name="visibility" defaultValue={vis} className={inputCls}>
+                {Object.entries(PROJECT_VISIBILITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <button className={btnSecondaryCls}>Salvar</button>
+            </form>
+            <p className="text-xs text-muted">{PROJECT_VISIBILITY[vis].help}</p>
             <Link href={`/talentos?projeto=${p.id}`} className="block text-sm text-accent hover:underline">Buscar mentorados compativeis →</Link>
             <DeleteConfirm action={deleteProject} fields={{ project_id: p.id, return: `/projetos/${p.id}` }} label="Excluir projeto">
               O projeto, as candidaturas, os comentarios e os acessos de mentores serao apagados. Quem participa recebe um aviso.
@@ -245,7 +277,15 @@ export default async function ProjetoPage({
               </div>
             ))}
             <h3 className="pt-2 text-sm font-semibold">Participantes ({participants.length})</h3>
-            <ul className="text-sm text-muted">{participants.map((x) => <li key={x.id}>{x.name}</li>)}</ul>
+            <ul className="space-y-1 text-sm text-muted">{participants.map((x) => (
+              <li key={x.id} className="flex items-center justify-between gap-2">
+                <span>{x.name}</span>
+                <form action={removeProjectParticipant}>
+                  <input type="hidden" name="project_id" value={p.id} /><input type="hidden" name="user_id" value={x.id} />
+                  <button className="text-xs text-red-300 hover:underline">Remover</button>
+                </form>
+              </li>
+            ))}</ul>
           </Card>
         )}
       </aside>

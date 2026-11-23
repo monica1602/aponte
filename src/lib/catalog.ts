@@ -50,6 +50,26 @@ export const PROJECT_KINDS = {
 } as const;
 export type ProjectKind = keyof typeof PROJECT_KINDS;
 
+export const PROJECT_VISIBILITY = {
+  public: { label: "Publico", help: "Todos veem, inclusive visitantes, e podem se candidatar." },
+  members: { label: "So para cadastrados", help: "So quem tem conta na Ponte ve e pode se candidatar." },
+  open: { label: "Open source", help: "Todos veem. Quem tem conta entra na hora pelo botao Contribuir, e voce e avisado." },
+  private: { label: "Particular", help: "Nao aparece na lista. So voce, os mentores que ajudam, os participantes e os convidados veem." },
+} as const;
+export type ProjectVisibility = keyof typeof PROJECT_VISIBILITY;
+
+export function projectVisibility(p: { visibility: string; open_contribution?: number | null }): ProjectVisibility {
+  if (p.visibility === "private") return "private";
+  if (p.visibility === "invite") return "members";
+  return p.open_contribution ? "open" : "public";
+}
+
+export function visibilityColumns(v: ProjectVisibility): { visibility: "public" | "invite" | "private"; open_contribution: number } {
+  if (v === "private") return { visibility: "private", open_contribution: 0 };
+  if (v === "members") return { visibility: "invite", open_contribution: 0 };
+  return { visibility: "public", open_contribution: v === "open" ? 1 : 0 };
+}
+
 export const PROJECT_STATUS = {
   rascunho: "Rascunho",
   aberto: "Aberto para participacao",

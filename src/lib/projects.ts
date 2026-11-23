@@ -1,5 +1,5 @@
 import { getDb, type Project, type User } from "./db";
-import { canViewProject, isPubliclyListed } from "./matching";
+import { canViewProject, isListedFor } from "./matching";
 
 export type ProjectView = {
   project: Project;
@@ -27,16 +27,28 @@ async function participants(projectId: number) {
     .all(projectId) as { id: number; name: string; status: string }[];
 }
 
+/** True when the project exists and is listed for members only, so a visitor can be asked to log in. */
+export async function isMembersOnlyProject(id: number): Promise<boolean> {
+  const p = await getDb().prepare("SELECT visibility, status FROM projects WHERE id = ?").get(id) as { visibility: string; status: string } | undefined;
+  return !!p && p.visibility === "invite" && !["rascunho", "arquivado"].includes(p.status);
+}
+
 /** Returns the project only if the viewer is allowed to see it (server-side privacy check). */
 export async function getProjectForViewer(id: number, viewer: User | null): Promise<ProjectView | null> {
   const project = await getDb().prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined;
   if (!project) return null;
   const grantedMentors = await activeGrants(id);
   const parts = await participants(id);
+  const invited = viewer
+    ? (await getDb().prepare(
+        `SELECT mentor_id AS id FROM project_mentor_invites WHERE project_id = ? AND mentor_id = ?
+         UNION SELECT user_id FROM project_member_invites WHERE project_id = ? AND user_id = ?`
+      ).all(id, viewer.id, id, viewer.id) as { id: number }[])
+    : [];
   const allowed = canViewProject(
     viewer ? { id: viewer.id, role: viewer.role } : null,
     { ownerId: project.owner_id, kind: project.kind, visibility: project.visibility, status: project.status },
-    { grantedMentorIds: grantedMentors.map((m) => m.id), participantIds: parts.map((p) => p.id) }
+    { grantedMentorIds: grantedMentors.map((m) => m.id), participantIds: parts.map((p) => p.id), invitedIds: invited.map((i) => i.id) }
   );
   if (!allowed) return null;
   const owner = await getDb().prepare("SELECT id, name, role FROM users WHERE id = ?").get(project.owner_id) as ProjectView["owner"];
@@ -45,18 +57,18 @@ export async function getProjectForViewer(id: number, viewer: User | null): Prom
 
 export type ProjectFilters = { kind?: string; tool?: string; difficulty?: string; modality?: string; q?: string };
 
-export async function listPublicProjects(f: ProjectFilters = {}): Promise<(Project & { owner_name: string; owner_role: string })[]> {
+export async function listPublicProjects(f: ProjectFilters = {}, viewer: User | null = null): Promise<(Project & { owner_name: string; owner_role: string })[]> {
   const rows = await getDb()
     .prepare(
       `SELECT p.*, u.name AS owner_name, u.role AS owner_role FROM projects p JOIN users u ON u.id = p.owner_id
-       WHERE p.visibility = 'public' AND p.status NOT IN ('rascunho','arquivado')
+       WHERE p.visibility IN ('public','invite') AND p.status NOT IN ('rascunho','arquivado')
        ORDER BY (p.status = 'aberto') DESC, p.created_at DESC`
     )
     .all() as unknown as (Project & { owner_name: string; owner_role: string })[];
   const has = (v: string, needle: string) => v.toLowerCase().includes(needle.toLowerCase());
   return rows.filter(
     (p) =>
-      isPubliclyListed({ ownerId: p.owner_id, kind: p.kind, visibility: p.visibility, status: p.status }) &&
+      isListedFor(viewer ? { id: viewer.id, role: viewer.role } : null, { ownerId: p.owner_id, kind: p.kind, visibility: p.visibility, status: p.status }) &&
       (!f.kind || p.kind === f.kind) &&
       (!f.tool || has(p.tools, f.tool)) &&
       (!f.difficulty || p.difficulty === f.difficulty) &&

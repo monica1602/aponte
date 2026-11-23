@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  matchMentor, matchMentee, weightedPercent, rank, explain, canViewProject, isPubliclyListed,
+  matchMentor, matchMentee, weightedPercent, rank, explain, canViewProject, isPubliclyListed, isListedFor,
 } from "../src/lib/matching.ts";
 
 const ana = {
@@ -95,4 +95,33 @@ test("projeto publico aparece para todos; rascunho so para o dono", () => {
   assert.equal(isPubliclyListed(draft), false);
   assert.equal(canViewProject({ id: 9, role: "mentee" }, draft, { grantedMentorIds: [], participantIds: [9] }), false);
   assert.equal(canViewProject({ id: 1, role: "mentee" }, draft, { grantedMentorIds: [], participantIds: [] }), true);
+});
+
+test("visibilidades: publico, so cadastrados e particular", () => {
+  const none = { grantedMentorIds: [], participantIds: [] };
+  const members = { ...oss, visibility: "invite" };
+  assert.equal(canViewProject(null, members, none), false);
+  assert.equal(canViewProject({ id: 7, role: "company" }, members, none), true);
+  assert.equal(isListedFor(null, members), false);
+  assert.equal(isListedFor({ id: 7, role: "mentee" }, members), true);
+  const priv2 = { ...oss, visibility: "private" };
+  assert.equal(isListedFor({ id: 7, role: "mentee" }, priv2), false);
+  assert.equal(canViewProject(null, priv2, none), false);
+  assert.equal(canViewProject({ id: 7, role: "mentee" }, priv2, none), false);
+  assert.equal(canViewProject({ id: 3, role: "mentor" }, priv2, { grantedMentorIds: [3], participantIds: [] }), true);
+  assert.equal(canViewProject({ id: 5, role: "mentee" }, priv2, { grantedMentorIds: [], participantIds: [5] }), true);
+  assert.equal(canViewProject({ id: 6, role: "mentee" }, priv2, { grantedMentorIds: [], participantIds: [], invitedIds: [6] }), true);
+  assert.equal(canViewProject({ id: 1, role: "mentee" }, priv2, none), true);
+});
+
+test("arquivado: dono, participantes e mentores que ajudam; rascunho so o dono", () => {
+  const archived = { ...oss, status: "arquivado" };
+  const ctx = { grantedMentorIds: [3], participantIds: [5], invitedIds: [] };
+  assert.equal(canViewProject({ id: 3, role: "mentor" }, archived, ctx), true);
+  assert.equal(canViewProject({ id: 5, role: "mentee" }, archived, ctx), true);
+  assert.equal(canViewProject({ id: 1, role: "mentee" }, archived, ctx), true);
+  assert.equal(canViewProject({ id: 8, role: "mentor" }, archived, ctx), false);
+  assert.equal(canViewProject(null, archived, ctx), false);
+  const draft = { ...oss, status: "rascunho" };
+  assert.equal(canViewProject({ id: 3, role: "mentor" }, draft, { grantedMentorIds: [3], participantIds: [], invitedIds: [3] }), false);
 });

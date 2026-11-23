@@ -21,7 +21,7 @@ export default async function ProjetosPage({ searchParams }: { searchParams: Pro
     modality: val(sp, "modality", MODALITIES),
     q: val(sp, "q"),
   };
-  const projects = await listPublicProjects(filters);
+  const projects = await listPublicProjects(filters, user);
   const mine = user ? await listOwnProjects(user.id) : [];
   const shared = user?.role === "mentor" ? await listSharedWithMentor(user.id) : [];
   const participating = user ? await listParticipating(user.id) : [];
@@ -68,6 +68,7 @@ export default async function ProjetosPage({ searchParams }: { searchParams: Pro
                 <div className="flex flex-wrap gap-1.5">
                   <Badge kind={p.kind === "open_source" ? "open_source" : p.kind === "empresarial" ? "vaga" : "projeto"} label={PROJECT_KINDS[p.kind]} />
                   <Badge kind={p.status === "aberto" ? "active" : "pending"} label={PROJECT_STATUS[p.status as keyof typeof PROJECT_STATUS] ?? p.status} />
+                  {p.open_contribution ? <Badge kind="open_source" label="Contribuicao livre" /> : p.visibility === "invite" ? <Badge kind="projeto" label="So para cadastrados" /> : null}
                   {p.difficulty && <Badge kind="projeto" label={p.difficulty} />}
                 </div>
                 <Link href={`/projetos/${p.id}`} className="mt-3 block text-lg font-semibold text-accent hover:underline">{p.title}</Link>

@@ -132,7 +132,7 @@ export default async function Home() {
     { value: await count("SELECT COUNT(*) AS n FROM users WHERE role = 'mentor' AND account_status = 'active'"), label: "mentores ativos" },
     { value: await count("SELECT COUNT(*) AS n FROM users WHERE role = 'mentee' AND account_status = 'active'"), label: "mentorados" },
     { value: await count("SELECT COUNT(*) AS n FROM mentorships WHERE status = 'active'"), label: "mentorias em andamento" },
-    { value: await count("SELECT COUNT(*) AS n FROM projects WHERE visibility = 'public' AND status NOT IN ('rascunho','arquivado')"), label: "projetos abertos a comunidade" },
+    { value: await count("SELECT COUNT(*) AS n FROM projects WHERE visibility IN ('public','invite') AND status NOT IN ('rascunho','arquivado')"), label: "projetos abertos a comunidade" },
   ];
   return (
     <div>

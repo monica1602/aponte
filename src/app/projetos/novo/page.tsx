@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { createProject } from "@/lib/edu-actions";
 import { AREAS, DIFFICULTIES, MODALITIES, OPPORTUNITY_TYPES, PROJECT_KINDS, TOOLS, WEEKLY_HOURS } from "@/lib/catalog";
+import { ProjectKindVisibility } from "@/components/project-kind-visibility";
 import { Card, CheckGroup, Field, Flash, PageHeader, SelectField, btnCls, inputCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,8 @@ const KINDS_BY_ROLE: Record<string, (keyof typeof PROJECT_KINDS)[]> = {
 };
 
 const KIND_HELP: Record<string, string> = {
-  particular: "Seu projeto de portfolio. Aparece para todos e recebe candidaturas.",
-  open_source: "Publico, com repositorio aberto. Qualquer pessoa pode se candidatar.",
+  particular: "Seu projeto de portfolio ou de estudo.",
+  open_source: "Projeto com repositorio de codigo aberto.",
   educacional: "Projeto guiado para aprendizado em grupo.",
   empresarial: "Projeto real da empresa para formar talentos.",
 };
@@ -32,18 +33,7 @@ export default async function NovoProjetoPage({ searchParams }: { searchParams: 
       <Flash params={sp} />
       <form action={createProject} className="space-y-6">
         <Card className="space-y-4">
-          <fieldset>
-            <legend className="mb-2 text-sm font-medium">Tipo de projeto *</legend>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {kinds.map((k, i) => (
-                <label key={k} className="cursor-pointer rounded-md border border-line p-3 has-[:checked]:border-accent has-[:checked]:bg-accent/10 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent">
-                  <input type="radio" name="kind" value={k} defaultChecked={i === 0} className="mr-2 accent-[#9db4ff]" />
-                  <span className="font-medium">{PROJECT_KINDS[k]}</span>
-                  <span className="mt-1 block text-xs text-muted">{KIND_HELP[k]}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <ProjectKindVisibility kinds={kinds} help={KIND_HELP} />
           <Field label="Nome do projeto *"><input name="title" required minLength={3} maxLength={140} className={inputCls} /></Field>
           <Field label="Resumo curto"><input name="summary" maxLength={240} className={inputCls} /></Field>
           <Field label="Descricao *"><textarea name="description" required minLength={10} rows={4} className={inputCls} /></Field>
