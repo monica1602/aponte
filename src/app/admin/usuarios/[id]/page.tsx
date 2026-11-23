@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
-import { getPersonDetail, type Ref } from "@/lib/admin-data";
+import { EMAIL_STATUS_PT, getPersonDetail, type Ref } from "@/lib/admin-data";
 import { AdminNav } from "@/components/admin-nav";
 import { Badge, Card, ROLE_LABELS } from "@/components/ui";
 import { externalHref } from "@/lib/url";
@@ -22,6 +22,7 @@ const USER_LABELS: Record<string, string> = {
   skills: "Habilidades", image_consent: "Autoriza uso de imagem", public_profile_consent: "Perfil publico autorizado",
   public_profile_consent_at: "Perfil publico autorizado em", employment_terms_accepted_at: "Termos aceitos em",
   code_of_conduct_accepted_at: "Codigo de conduta aceito em", must_change_password: "Precisa trocar a senha", created_at: "Cadastrado em",
+  email_status: "Confirmacao do e-mail", email_verified_at: "E-mail confirmado em",
 };
 const LINK_KEYS = new Set(["linkedin", "github", "portfolio", "website"]);
 
@@ -73,7 +74,7 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
           <h2 className="mb-3 font-semibold">{role === "company" ? "Dados da empresa e da conta" : "Dados pessoais e da conta"}</h2>
           <dl className="grid grid-cols-[160px_1fr] gap-x-3 gap-y-1.5 text-sm">
             {Object.entries(USER_LABELS).filter(([k]) => k in user).map(([k, label]) => (
-              <div key={k} className="contents"><dt className="text-muted">{label}</dt><dd className="break-words">{k === "role" ? ROLE_LABELS[role] : show(user[k])}</dd></div>
+              <div key={k} className="contents"><dt className="text-muted">{label}</dt><dd className="break-words">{k === "role" ? ROLE_LABELS[role] : k === "email_status" ? (EMAIL_STATUS_PT[String(user[k])] ?? show(user[k])) : show(user[k])}</dd></div>
             ))}
           </dl>
         </Card>

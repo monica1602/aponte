@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import { getDriver, setIdTables, type Param, type Row, type RunResult } from "./sql";
 
 export type Role = "mentor" | "mentee" | "company";
-export type AccountStatus = "pending" | "active" | "rejected";
+export type AccountStatus = "pending" | "active" | "rejected" | "disputed";
+export type EmailStatus = "verified" | "pending" | "disputed";
 
 export interface User {
   id: number;
@@ -19,6 +20,8 @@ export interface User {
   public_profile_consent: number;
   public_profile_consent_at: string | null;
   show_email: number;
+  email_status: EmailStatus;
+  email_verified_at: string | null;
   employment_terms_accepted_at: string | null;
   code_of_conduct_accepted_at: string | null;
   created_at: string;
@@ -131,6 +134,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at INTEGER NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS password_resets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -459,6 +470,8 @@ async function ensureMigrations(db: Db) {
     employment_terms_accepted_at: "TEXT",
     code_of_conduct_accepted_at: "TEXT",
     show_email: "INTEGER NOT NULL DEFAULT 0",
+    email_status: "TEXT NOT NULL DEFAULT 'verified'",
+    email_verified_at: "TEXT",
   });
   await addColumns(db, "events", {
     category: "TEXT NOT NULL DEFAULT ''",

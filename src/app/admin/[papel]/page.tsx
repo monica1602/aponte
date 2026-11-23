@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
-import { listPeople, type Ref, type Role } from "@/lib/admin-data";
+import { EMAIL_STATUS_PT, listPeople, type Ref, type Role } from "@/lib/admin-data";
 import { AdminNav } from "@/components/admin-nav";
 import { Card, Empty } from "@/components/ui";
 
@@ -65,6 +65,7 @@ export default async function AdminListPage({ params, searchParams }: { params: 
                     <Link href={`/admin/usuarios/${p.id}`} className="font-semibold text-accent hover:underline">{p.name}</Link>
                     <p className="text-xs text-muted">{p.email}</p>
                     {p.account_status !== "active" && <p className="text-xs text-amber-300">{p.account_status}</p>}
+                    <p className={`text-xs ${p.email_status === "verified" ? "text-emerald-300" : p.email_status === "disputed" ? "text-red-300" : "text-amber-300"}`}>{EMAIL_STATUS_PT[p.email_status] ?? p.email_status}</p>
                   </td>
                   {page.role === "mentee" && <><td className="p-3"><Refs items={p.mentors} kind="user" /></td><td className="p-3"><Refs items={p.projects} kind="project" /></td><td className="p-3"><Refs items={p.companies} kind="user" /></td></>}
                   {page.role === "mentor" && <><td className="p-3"><Refs items={p.mentees} kind="user" /></td><td className="p-3"><Refs items={p.projects} kind="project" /></td><td className="p-3"><Refs items={p.companies} kind="user" /></td></>}

@@ -13,6 +13,21 @@ export async function clientIp(): Promise<string> {
   return h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || "local";
 }
 
+export async function siteUrl(): Promise<string> {
+  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, "");
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+export const UNVERIFIED_MSG = "Confirme seu e-mail para fazer isso. Use o botao Reenviar e-mail de confirmacao, no topo da pagina.";
+
+/** Accounts that have not confirmed their e-mail yet cannot act on other people. */
+export function requireVerified(user: User, ret: string): void {
+  if (user.email_status === "pending") back(ret, "error", UNVERIFIED_MSG);
+}
+
 export function str(formData: FormData, key: string, max = 2000): string {
   return String(formData.get(key) ?? "").trim().slice(0, max);
 }

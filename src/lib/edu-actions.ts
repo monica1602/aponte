@@ -2,7 +2,7 @@
 
 import { bareUrl } from "./url";
 import { audit, getDb, getProfile, notify, saveProfile, type Profile, type Project } from "./db";
-import { back, csv, one, pick, requireUser, safeReturn, str } from "./session";
+import { back, csv, one, pick, requireUser, requireVerified, safeReturn, str } from "./session";
 import {
   AREAS, COMPANY_TYPES, DIFFICULTIES, HELP_TYPES, MENTEE_LEVELS, MENTOR_LEVELS, MODALITIES, OPPORTUNITY_TYPES,
   PERIODS, PROJECT_KINDS, PROJECT_STATUS, PROJECT_VISIBILITY, SECTORS, SESSION_DURATIONS, TOOLS, UFS, WEEKDAYS, WEEKLY_HOURS,
@@ -110,6 +110,7 @@ const KINDS_BY_ROLE: Record<string, string[]> = {
 export async function createProject(formData: FormData) {
   const user = await requireUser();
   const ret = "/projetos/novo";
+  requireVerified(user, ret);
   const kind = one(formData, "kind", Object.keys(PROJECT_KINDS));
   if (!KINDS_BY_ROLE[user.role]?.includes(kind)) back(ret, "error", "Este tipo de projeto nao esta disponivel para o seu perfil.");
   const title = str(formData, "title", 140);
@@ -218,6 +219,7 @@ export async function grantProjectAccess(formData: FormData) {
   const id = Number(formData.get("project_id"));
   const mentorId = Number(formData.get("mentor_id"));
   const ret = `/projetos/${id}`;
+  requireVerified(user, ret);
   const project = await ownProject(id, user.id);
   if (!project) back("/projetos", "error", "Projeto nao encontrado.");
   const linked = await getDb()
@@ -244,6 +246,7 @@ export async function inviteProjectMentor(formData: FormData) {
   const id = Number(formData.get("project_id"));
   const mentorId = Number(formData.get("mentor_id"));
   const ret = `/projetos/${id}`;
+  requireVerified(user, ret);
   const project = await ownProject(id, user.id);
   if (!project) back("/projetos", "error", "Projeto nao encontrado.");
   const db = getDb();
@@ -291,6 +294,7 @@ export async function inviteProjectMember(formData: FormData) {
   const id = Number(formData.get("project_id"));
   const memberId = Number(formData.get("user_id"));
   const ret = `/projetos/${id}`;
+  requireVerified(user, ret);
   const project = await ownProject(id, user.id);
   if (!project) back("/projetos", "error", "Projeto nao encontrado.");
   const db = getDb();
@@ -354,6 +358,7 @@ export async function applyToProject(formData: FormData) {
   const user = await requireUser();
   const id = Number(formData.get("project_id"));
   const ret = `/projetos/${id}`;
+  requireVerified(user, ret);
   const view = await getProjectForViewer(id, user);
   if (!view) back("/projetos", "error", "Projeto nao encontrado.");
   const p = view!.project;
@@ -434,6 +439,7 @@ export async function addProjectFeedback(formData: FormData) {
   const user = await requireUser();
   const id = Number(formData.get("project_id"));
   const ret = `/projetos/${id}`;
+  requireVerified(user, ret);
   const view = await getProjectForViewer(id, user);
   if (!view) back("/projetos", "error", "Projeto nao encontrado.");
   const allowed =

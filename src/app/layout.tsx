@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import Link from "next/link";
 import { getSessionUser } from "@/lib/auth";
-import { logout } from "@/lib/actions";
+import { logout, resendEmailVerification } from "@/lib/actions";
 import { getDb, getProfile, profileCompleteness } from "@/lib/db";
 import { isTemporaryDatabase } from "@/lib/sql";
 import { Suspense } from "react";
@@ -73,6 +73,14 @@ export default async function RootLayout({
             Modo demonstracao: o banco de dados nao esta conectado, os dados sao temporarios e o login pode cair.
             Conecte o Neon na aba Storage da Vercel e publique de novo.
           </p>
+        )}
+        {user && user.email_status === "pending" && (
+          <div role="status" className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-amber-400/30 bg-amber-400/10 px-5 py-2 text-center text-sm text-amber-100">
+            <span>Confirme seu e-mail: enviamos um link para {user.email}. Ate confirmar, convites, candidaturas, inscricoes e novas publicacoes ficam bloqueados.</span>
+            <form action={resendEmailVerification}>
+              <button className="cursor-pointer font-semibold text-amber-200 underline">Reenviar e-mail de confirmacao</button>
+            </form>
+          </div>
         )}
         {user && completeness < 100 && (
           <p role="status" className="border-b border-accent/20 bg-accent/10 px-5 py-2 text-center text-sm text-fg">

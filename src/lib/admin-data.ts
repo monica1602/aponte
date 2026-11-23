@@ -4,14 +4,15 @@ import { PROJECT_STATUS } from "./catalog";
 import { eventTimeMs } from "./event-time";
 
 export type Role = "mentor" | "mentee" | "company";
+export const EMAIL_STATUS_PT: Record<string, string> = { verified: "E-mail confirmado", pending: "Aguardando confirmacao", disputed: "Contestado" };
 export type Ref = { id: number; name: string; role?: string; extra?: string };
 export type PersonRow = {
-  id: number; name: string; email: string; role: Role; account_status: string; headline: string; created_at: string;
+  id: number; name: string; email: string; role: Role; account_status: string; email_status: string; headline: string; created_at: string;
   profile: Profile;
   mentors: Ref[]; mentees: Ref[]; companies: Ref[]; projects: Ref[]; jointProjects: Ref[]; mentorsLinked: Ref[]; menteesLinked: Ref[];
 };
 
-type U = { id: number; name: string; email: string; role: Role; account_status: string; headline: string; created_at: string };
+type U = { id: number; name: string; email: string; role: Role; account_status: string; email_status: string; headline: string; created_at: string };
 type M = { mentor_id: number; mentee_id: number; status: string; created_at: string };
 type P = { id: number; owner_id: number; title: string; kind: string; status: string; tools: string; created_at: string };
 type A = { project_id: number; user_id: number; status: string };
@@ -26,7 +27,7 @@ function uniq(list: Ref[]): Ref[] {
 async function load() {
   const db = getDb();
   const [users, ms, projects, apps, access, profiles, links] = await Promise.all([
-    db.prepare("SELECT id, name, email, role, account_status, headline, created_at FROM users ORDER BY name").all(),
+    db.prepare("SELECT id, name, email, role, account_status, email_status, headline, created_at FROM users ORDER BY name").all(),
     db.prepare("SELECT mentor_id, mentee_id, status, created_at FROM mentorships").all(),
     db.prepare("SELECT id, owner_id, title, kind, status, tools, created_at FROM projects").all(),
     db.prepare("SELECT project_id, user_id, status FROM project_applications WHERE status IN ('pending','accepted')").all(),

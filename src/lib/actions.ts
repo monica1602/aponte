@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { headers } from "next/headers";
 import crypto from "node:crypto";
 import { audit, getDb, hashPassword, notify, verifyPassword, type User } from "./db";
 import {
@@ -17,7 +19,8 @@ import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
 import { checkInWindow, spTime } from "./event-time";
 import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate-limit";
-import { clientIp } from "./session";
+import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
+import { createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
 
@@ -46,6 +49,13 @@ async function me(): Promise<User> {
   if (user!.account_status !== "active") redirect("/login?error=Sua conta ainda nao esta ativa.");
   if (user!.must_change_password) redirect("/primeiro-acesso");
   return user;
+}
+
+async function sendEmailVerification(userId: number, email: string, name: string, role: string): Promise<void> {
+  const token = await createVerificationToken(userId);
+  const base = await siteUrl();
+  const date = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
+  after(() => sendVerificationEmail(email, name, ROLE_PT[role] ?? role, date, base, token));
 }
 
 function isEventOwner(user: User): boolean {
@@ -143,6 +153,9 @@ export async function login(formData: FormData) {
   if (user!.account_status === "rejected") {
     back("/login", "error", "Seu cadastro nao foi aprovado. Fale com o administrador.");
   }
+  if (user!.account_status === "disputed") {
+    back("/login", "error", "Esta conta foi desativada porque o dono do e-mail informou que nao criou o cadastro. Fale com o administrador.");
+  }
   if (!user!.must_change_password && passwordProblem(password)) {
     await getDb().prepare("UPDATE users SET must_change_password = 1 WHERE id = ?").run(user!.id);
     user!.must_change_password = 1;
@@ -184,16 +197,17 @@ export async function registerAccount(formData: FormData) {
     `INSERT INTO users (
       email, password_hash, name, role, account_status, image_consent,
       public_profile_consent, public_profile_consent_at,
-      employment_terms_accepted_at, code_of_conduct_accepted_at
-    ) VALUES (?,?,?,?, ?, ?, 1, datetime('now'), datetime('now'), datetime('now'))`
+      employment_terms_accepted_at, code_of_conduct_accepted_at, email_status
+    ) VALUES (?,?,?,?, ?, ?, 1, datetime('now'), datetime('now'), datetime('now'), 'pending')`
   ).run(email, hashPassword(password), name, role, REQUIRE_APPROVAL ? "pending" : "active", formData.get("image_consent") === "on" ? 1 : 0);
   const newUserId = Number(result.lastInsertRowid);
   await recordAttempt("signup", [`ip:${ip}`]);
+  await sendEmailVerification(newUserId, email, name, role);
   await audit(null, REQUIRE_APPROVAL ? "account.requested" : "account.created", "user", newUserId);
   await alertAdmin(`Novo cadastro de ${ROLE_PT[role]}: ${name}${REQUIRE_APPROVAL ? " (aguardando aprovacao)" : ""}`);
   if (REQUIRE_APPROVAL) back("/login", "msg", "Cadastro enviado. Aguarde a aprovacao do administrador para entrar.");
   await createSession(newUserId);
-  back("/perfil", "msg", "Conta criada! Complete seu perfil para receber recomendacoes por compatibilidade.");
+  back("/perfil", "msg", "Conta criada! Enviamos um e-mail para confirmar que foi voce. Enquanto isso, complete seu perfil para receber recomendacoes por compatibilidade.");
 }
 
 export async function reviewAccount(formData: FormData) {
@@ -215,6 +229,7 @@ export async function reviewAccount(formData: FormData) {
 export async function createMentee(formData: FormData) {
   const mentor = await me();
   if (mentor.role !== "mentor") redirect("/dashboard");
+  requireVerified(mentor, "/dashboard");
   const name = str(formData, "name");
   const email = str(formData, "email").toLowerCase();
   const temporaryPassword = str(formData, "temporary_password");
@@ -228,9 +243,10 @@ export async function createMentee(formData: FormData) {
     back("/dashboard", "error", "Este email ja possui uma conta.");
   }
   const result = await db.prepare(
-    "INSERT INTO users (email, password_hash, name, role, account_status, must_change_password) VALUES (?,?,?,?, 'pending', 1)"
+    "INSERT INTO users (email, password_hash, name, role, account_status, must_change_password, email_status) VALUES (?,?,?,?, 'pending', 1, 'pending')"
   ).run(email, hashPassword(temporaryPassword), name, "mentee");
   const menteeId = Number(result.lastInsertRowid);
+  await sendEmailVerification(menteeId, email, name, "mentee");
   await db.prepare("INSERT INTO mentorships (mentor_id, mentee_id, status) VALUES (?,?,'active')").run(mentor.id, menteeId);
   await audit(mentor.id, "mentee.created_by_mentor", "user", menteeId);
   back("/dashboard", "msg", "Mentorado criado e conectado a sua rede. O administrador ainda precisa aprovar o cadastro antes do primeiro acesso.");
@@ -310,6 +326,7 @@ export async function requestMentorship(formData: FormData) {
   const user = await me();
   const mentorId = Number(formData.get("mentor_id"));
   const ret = str(formData, "return") || "/mentores";
+  requireVerified(user, ret);
   if (user.role !== "mentee") {
     back(ret, "error", "Apenas mentorados podem solicitar mentoria.");
   }
@@ -359,6 +376,7 @@ export async function inviteMentee(formData: FormData) {
   const user = await me();
   const menteeId = Number(formData.get("mentee_id"));
   const ret = str(formData, "return") || "/talentos";
+  requireVerified(user, ret);
   if (user.role !== "mentor") back(ret, "error", "Apenas mentores podem convidar mentorados.");
   const mentee = await getDb()
     .prepare("SELECT id FROM users WHERE id = ? AND role = 'mentee' AND account_status = 'active'")
@@ -405,6 +423,7 @@ export async function inviteToCompany(formData: FormData) {
   const user = await me();
   const memberId = Number(formData.get("member_id"));
   const ret = str(formData, "return") || `/pessoas/${memberId}`;
+  requireVerified(user, ret);
   if (user.role !== "company") back(ret, "error", "Apenas empresas enviam este convite.");
   const member = (await getDb()
     .prepare("SELECT id, role FROM users WHERE id = ? AND role IN ('mentor','mentee') AND account_status = 'active'")
@@ -487,6 +506,7 @@ export async function toggleEndorsement(formData: FormData) {
   const user = await me();
   const contributionId = Number(formData.get("contribution_id"));
   const ret = str(formData, "return") || "/dashboard";
+  requireVerified(user, ret);
   const db = getDb();
   const contribution = await db
     .prepare("SELECT user_id FROM contributions WHERE id = ?")
@@ -518,6 +538,7 @@ export async function toggleEndorsement(formData: FormData) {
 export async function addOpportunity(formData: FormData) {
   const user = await me();
   if (user.role !== "mentor" && user.role !== "company") redirect("/dashboard");
+  requireVerified(user, "/dashboard");
   const title = str(formData, "title");
   const type = str(formData, "type");
   if (!title || !["open_source", "evento", "vaga"].includes(type)) {
@@ -542,6 +563,7 @@ export async function deleteOpportunity(formData: FormData) {
 export async function createEvent(formData: FormData) {
   const user = await me();
   if (!isEventOwner(user)) back("/dashboard", "error", "Apenas mentores e empresas podem criar eventos.");
+  requireVerified(user, "/dashboard");
 
   const title = str(formData, "title");
   const modality = str(formData, "modality");
@@ -609,6 +631,7 @@ export async function requestEventAccess(formData: FormData) {
   const user = await me();
   const eventId = Number(formData.get("event_id"));
   const ret = str(formData, "return") || "/eventos";
+  requireVerified(user, ret);
   const db = getDb();
   const event = await db
     .prepare("SELECT * FROM events WHERE id = ? AND status = 'published'")
@@ -782,6 +805,7 @@ export async function scheduleMentorshipMeeting(formData: FormData) {
 export async function issueCertificate(formData: FormData) {
   const user = await me();
   if (!isEventOwner(user)) redirect("/dashboard");
+  requireVerified(user, "/dashboard");
   const recipientId = Number(formData.get("recipient_id"));
   const eventId = Number(formData.get("event_id"));
   const db = getDb();
@@ -801,4 +825,51 @@ export async function issueCertificate(formData: FormData) {
     back("/dashboard", "error", "Ja existe certificado para esta pessoa neste evento.");
   }
   redirect(`/certificados/${code}`);
+}
+
+async function returnPath(): Promise<string> {
+  const ref = (await headers()).get("referer");
+  if (!ref) return "/dashboard";
+  try {
+    const u = new URL(ref);
+    return safeReturn(`${u.pathname}${u.search.replace(/[?&](msg|error)=[^&]*/g, "").replace(/^&/, "?")}`, "/dashboard");
+  } catch {
+    return "/dashboard";
+  }
+}
+
+export async function resendEmailVerification() {
+  const user = await me();
+  const ret = await returnPath();
+  if (user.email_status !== "pending") back(ret, "msg", "Seu e-mail ja esta confirmado.");
+  const limit = [{ action: "verify_resend", subject: `user:${user.id}`, max: 3, windowMin: 60 }];
+  const wait = await blockedFor(limit);
+  if (wait) back(ret, "error", tooManyMessage(wait));
+  await recordAttempt("verify_resend", [`user:${user.id}`]);
+  await sendEmailVerification(user.id, user.email, user.name, user.role);
+  back(ret, "msg", `Enviamos um novo e-mail de confirmacao para ${user.email}.`);
+}
+
+export async function confirmEmail(formData: FormData) {
+  const token = str(formData, "token");
+  const target = await verificationTarget(token);
+  if (!target) redirect("/verificar-email?status=invalido");
+  if (target!.expired) redirect("/verificar-email?status=vencido");
+  await getDb().prepare("UPDATE users SET email_status = 'verified', email_verified_at = datetime('now') WHERE id = ?").run(target!.user_id);
+  await markVerificationUsed(token);
+  await audit(target!.user_id, "email.verified", "user", target!.user_id);
+  redirect("/verificar-email?status=confirmado");
+}
+
+export async function disputeAccount(formData: FormData) {
+  const token = str(formData, "token");
+  const target = await verificationTarget(token);
+  if (!target) redirect("/verificar-email?status=invalido");
+  const db = getDb();
+  await db.prepare("UPDATE users SET account_status = 'disputed', email_status = 'disputed' WHERE id = ?").run(target!.user_id);
+  await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target!.user_id);
+  await markVerificationUsed(token);
+  await audit(null, "account.disputed", "user", target!.user_id);
+  await alertAdmin(`Cadastro contestado pelo dono do e-mail: ${target!.name} (${ROLE_PT[target!.role] ?? target!.role}). A conta foi desativada.`);
+  redirect("/verificar-email?status=desativada");
 }
