@@ -13,7 +13,14 @@ export const metadata: Metadata = { title: "Meus eventos — Ponte" };
 const STATUS: Record<string, string> = { approved: "Confirmada", requested: "Aguardando aprovacao", waitlist: "Lista de espera", declined: "Recusada", cancelled: "Cancelada" };
 
 type Ev = { id: number; title: string; starts_at: string; modality: string; capacity: number | null };
-type Reg = { event_id: number; name: string; email: string; role: string; status: string; checked_in_at: string | null };
+type Reg = { event_id: number; name: string; email: string; role: string; status: string; checked_in_at: string | null; safe_home_at: string | null };
+
+function safeHome(modality: string, r: Reg): string {
+  if (modality === "online" || !r.checked_in_at) return "—";
+  if (!r.safe_home_at) return "Aguardando";
+  const d = new Date(`${r.safe_home_at.replace(" ", "T")}Z`);
+  return `Sim, ${d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}`;
+}
 
 export default async function MeusEventosPage({ searchParams }: { searchParams: Promise<{ msg?: string; error?: string }> }) {
   const sp = await searchParams;
@@ -22,7 +29,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
   const db = getDb();
   const events = (await db.prepare("SELECT id, title, starts_at, modality, capacity FROM events WHERE owner_id = ? ORDER BY starts_at DESC").all(user.id)) as unknown as Ev[];
   const regs = (await db.prepare(
-    `SELECT r.event_id, u.name, u.email, u.role, r.status, r.checked_in_at FROM event_registrations r
+    `SELECT r.event_id, u.name, u.email, u.role, r.status, r.checked_in_at, r.safe_home_at FROM event_registrations r
      JOIN users u ON u.id = r.user_id JOIN events e ON e.id = r.event_id
      WHERE e.owner_id = ? ORDER BY u.name`
   ).all(user.id)) as unknown as Reg[];
@@ -63,7 +70,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
                   {list.length === 0 ? <p className="mt-3 text-sm text-muted">Nenhuma pessoa inscrita ainda.</p> : (
                     <div className="mt-3 overflow-x-auto">
                       <table className="w-full text-left text-sm">
-                        <thead className="text-xs text-muted"><tr><th className="py-1 font-medium">Nome</th><th className="font-medium">Email</th><th className="font-medium">Inscricao</th><th className="font-medium">Check-in</th></tr></thead>
+                        <thead className="text-xs text-muted"><tr><th className="py-1 font-medium">Nome</th><th className="font-medium">Email</th><th className="font-medium">Inscricao</th><th className="font-medium">Check-in</th><th className="font-medium">Chegou bem</th></tr></thead>
                         <tbody>
                           {list.map((r) => (
                             <tr key={r.email} className="border-t border-line">
@@ -71,6 +78,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
                               <td className="text-muted">{r.email}</td>
                               <td><Badge kind={r.status} label={STATUS[r.status] ?? r.status} /></td>
                               <td className="text-muted">{r.checked_in_at ? "Sim" : "Nao"}</td>
+                              <td className={r.safe_home_at ? "text-emerald-300" : "text-muted"}>{safeHome(e.modality, r)}</td>
                             </tr>
                           ))}
                         </tbody>
