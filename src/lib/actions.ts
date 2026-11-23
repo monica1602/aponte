@@ -16,6 +16,8 @@ import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
 import { checkInWindow, spTime } from "./event-time";
+import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate-limit";
+import { clientIp } from "./session";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
 
@@ -57,12 +59,20 @@ function validDateTime(value: string): boolean {
 export async function adminLogin(formData: FormData) {
   const email = str(formData, "email").toLowerCase();
   const password = str(formData, "password");
+  const ip = await clientIp();
+  const adminLimit = [{ action: "admin_login", subject: `ip:${ip}`, max: 5, windowMin: 15 }];
+  const wait = await blockedFor(adminLimit);
+  if (wait) back("/admin/login", "error", tooManyMessage(wait));
   const expected = process.env.ADMIN_PASSWORD;
   const ok =
     !!expected &&
     email === (process.env.ADMIN_EMAIL ?? "").toLowerCase() &&
     password === expected;
-  if (!ok) back("/admin/login", "error", "Credenciais invalidas.");
+  if (!ok) {
+    await recordAttempt("admin_login", [`ip:${ip}`]);
+    if (await blockedFor(adminLimit)) await alertAdmin("Login da administracao bloqueado por 15 minutos depois de 5 tentativas erradas");
+    back("/admin/login", "error", "Credenciais invalidas.");
+  }
   await createAdminSession();
   redirect("/admin");
 }
@@ -101,12 +111,27 @@ export async function removeInvite(formData: FormData) {
 export async function login(formData: FormData) {
   const email = str(formData, "email").toLowerCase();
   const password = str(formData, "password");
+  const ip = await clientIp();
+  const emailLimit = { action: "login", subject: `email:${email}`, max: 5, windowMin: 15 };
+  const wait = await blockedFor([emailLimit, { action: "login", subject: `ip:${ip}`, max: 30, windowMin: 15 }]);
+  if (wait) back("/login", "error", tooManyMessage(wait));
   const user = await getDb().prepare("SELECT * FROM users WHERE email = ?").get(email) as
     | User
     | undefined;
   if (!user || !verifyPassword(password, user.password_hash)) {
+    await recordAttempt("login", [emailLimit.subject, `ip:${ip}`]);
+    if (user && (await blockedFor([emailLimit]))) {
+      await emailUser(
+        user.id,
+        "Varias tentativas de entrar na sua conta",
+        "Houve varias tentativas de entrar na sua conta com a senha errada. Por seguranca, o login ficou bloqueado por 15 minutos. Se nao foi voce, recomendamos trocar sua senha.",
+        "Trocar minha senha",
+        "/esqueci-senha"
+      );
+    }
     back("/login", "error", "Email ou senha incorretos.");
   }
+  await clearAttempts("login", emailLimit.subject);
   if (user!.account_status === "pending" && !REQUIRE_APPROVAL) {
     // Accounts created while approval was required are released automatically.
     await getDb().prepare("UPDATE users SET account_status = 'active' WHERE id = ?").run(user!.id);
@@ -134,6 +159,9 @@ export async function registerAccount(formData: FormData) {
   const confirmation = str(formData, "confirmation");
   const role = str(formData, "role");
   const ret = ["mentor", "mentee", "company"].includes(role) ? `/signup?role=${role}` : "/signup";
+  const ip = await clientIp();
+  const wait = await blockedFor([{ action: "signup", subject: `ip:${ip}`, max: 20, windowMin: 60 }]);
+  if (wait) back(ret, "error", tooManyMessage(wait));
   if (name.length < 2) back(ret, "error", "Informe seu nome (ou o nome da empresa) com pelo menos 2 caracteres.");
   if (!EMAIL_RE.test(email)) back(ret, "error", "Informe um email valido, por exemplo nome@dominio.com.");
   const weak = passwordProblem(password);
@@ -160,6 +188,7 @@ export async function registerAccount(formData: FormData) {
     ) VALUES (?,?,?,?, ?, ?, 1, datetime('now'), datetime('now'), datetime('now'))`
   ).run(email, hashPassword(password), name, role, REQUIRE_APPROVAL ? "pending" : "active", formData.get("image_consent") === "on" ? 1 : 0);
   const newUserId = Number(result.lastInsertRowid);
+  await recordAttempt("signup", [`ip:${ip}`]);
   await audit(null, REQUIRE_APPROVAL ? "account.requested" : "account.created", "user", newUserId);
   await alertAdmin(`Novo cadastro de ${ROLE_PT[role]}: ${name}${REQUIRE_APPROVAL ? " (aguardando aprovacao)" : ""}`);
   if (REQUIRE_APPROVAL) back("/login", "msg", "Cadastro enviado. Aguarde a aprovacao do administrador para entrar.");
@@ -246,8 +275,14 @@ export async function deleteAccount(formData: FormData) {
   const user = await me();
   const password = String(formData.get("password") ?? "");
   if (formData.get("confirm") !== "1") back("/perfil", "error", "Marque a confirmacao para excluir a conta.");
+  const deleteLimit = { action: "delete_account", subject: `user:${user.id}`, max: 5, windowMin: 15 };
+  const wait = await blockedFor([deleteLimit]);
+  if (wait) back("/perfil", "error", tooManyMessage(wait));
   const row = (await getDb().prepare("SELECT password_hash FROM users WHERE id = ?").get(user.id)) as { password_hash: string } | undefined;
-  if (!row || !verifyPassword(password, row.password_hash)) back("/perfil", "error", "Senha incorreta. A conta nao foi excluida.");
+  if (!row || !verifyPassword(password, row.password_hash)) {
+    await recordAttempt("delete_account", [deleteLimit.subject]);
+    back("/perfil", "error", "Senha incorreta. A conta nao foi excluida.");
+  }
   await destroySession();
   await getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);

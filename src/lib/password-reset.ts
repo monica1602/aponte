@@ -5,8 +5,9 @@ import { passwordProblem } from "./password-policy";
 import { headers } from "next/headers";
 import { getDb, hashPassword } from "./db";
 import { createSession } from "./auth";
-import { back, str } from "./session";
+import { back, clientIp, str } from "./session";
 import { hashToken } from "./reset-token";
+import { blockedFor, recordAttempt, tooManyMessage } from "./rate-limit";
 
 const TTL_MS = 1000 * 60 * 60; // 1 hour
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -63,6 +64,13 @@ async function sendResetEmail(to: string, name: string, link: string): Promise<b
 export async function requestPasswordReset(formData: FormData) {
   const email = str(formData, "email", 200).toLowerCase();
   if (!EMAIL_RE.test(email)) back("/esqueci-senha", "error", "Informe um email valido.");
+  const ip = await clientIp();
+  const wait = await blockedFor([
+    { action: "reset_request", subject: `email:${email}`, max: 3, windowMin: 60 },
+    { action: "reset_request", subject: `ip:${ip}`, max: 10, windowMin: 60 },
+  ]);
+  if (wait) back("/esqueci-senha", "error", tooManyMessage(wait));
+  await recordAttempt("reset_request", [`email:${email}`, `ip:${ip}`]);
   const user = (await getDb().prepare("SELECT id, name FROM users WHERE email = ?").get(email)) as
     | { id: number; name: string }
     | undefined;
@@ -83,13 +91,20 @@ export async function resetPassword(formData: FormData) {
   const password = str(formData, "password", 200);
   const confirmation = str(formData, "confirmation", 200);
   const ret = `/redefinir-senha?token=${encodeURIComponent(token)}`;
+  const ip = await clientIp();
+  const tokenLimit = [{ action: "reset_token", subject: `ip:${ip}`, max: 10, windowMin: 15 }];
+  const wait = await blockedFor(tokenLimit);
+  if (wait) back(ret, "error", tooManyMessage(wait));
   const weak = passwordProblem(password);
   if (weak) back(ret, "error", weak);
   if (password !== confirmation) back(ret, "error", "A confirmacao de senha nao confere.");
   const row = (await getDb()
     .prepare("SELECT id, user_id FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
     .get(hashToken(token), Date.now())) as { id: number; user_id: number } | undefined;
-  if (!row) back("/esqueci-senha", "error", "Este link expirou ou ja foi usado. Peca um novo.");
+  if (!row) {
+    await recordAttempt("reset_token", [`ip:${ip}`]);
+    back("/esqueci-senha", "error", "Este link expirou ou ja foi usado. Peca um novo.");
+  }
   await getDb().prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(password), row!.user_id);
   await getDb().prepare("UPDATE password_resets SET used_at = datetime('now') WHERE id = ?").run(row!.id);
   await getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(row!.user_id);

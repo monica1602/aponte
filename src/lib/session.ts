@@ -1,10 +1,16 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getSessionUser } from "./auth";
 import type { User } from "./db";
 
 export function back(path: string, key: "msg" | "error", text: string): never {
   const sep = path.includes("?") ? "&" : "?";
   redirect(`${path}${sep}${key}=${encodeURIComponent(text)}`);
+}
+
+export async function clientIp(): Promise<string> {
+  const h = await headers();
+  return h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || "local";
 }
 
 export function str(formData: FormData, key: string, max = 2000): string {

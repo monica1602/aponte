@@ -236,6 +236,13 @@ CREATE TABLE IF NOT EXISTS certificates (
   UNIQUE(user_id, event_id),
   UNIQUE(user_id, mentorship_id)
 );
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  action TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  attempted_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_attempts ON auth_attempts(action, subject, attempted_at);
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -420,7 +427,8 @@ $fn$ SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') $fn$;`;
 function postgresSchema(schema: string): string {
   return schema
     .replace(/INTEGER PRIMARY KEY AUTOINCREMENT/g, "SERIAL PRIMARY KEY")
-    .replace(/expires_at INTEGER/g, "expires_at BIGINT");
+    .replace(/expires_at INTEGER/g, "expires_at BIGINT")
+    .replace(/attempted_at INTEGER/g, "attempted_at BIGINT");
 }
 
 async function init() {
