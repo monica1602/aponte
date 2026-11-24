@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { PresenceActions } from "@/components/presence-actions";
+import { MeetingItem } from "@/components/meeting-item";
+import { listMeetings, type Meeting } from "@/lib/meetings";
 import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
 import { checkOutOpen } from "@/lib/event-time";
 import { canIssueCertificate } from "@/lib/retention";
@@ -176,6 +178,11 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
       )}
     </Card>
   );
+}
+
+function UpcomingMeetings({ meetings, userId }: { meetings: Meeting[]; userId: number }) {
+  const next = meetings.filter((m) => m.status === "scheduled").slice(0, 3);
+  return <Card><div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Proximos encontros</h2><Link href="/encontros" className="text-xs text-accent hover:underline">Ver todos os encontros →</Link></div>{next.length === 0 ? <div className="mt-2"><Empty>Nenhum encontro agendado.</Empty></div> : <ul className="mt-3 space-y-2">{next.map((m) => <MeetingItem key={m.id} m={m} userId={userId} returnTo="/dashboard" />)}</ul>}</Card>;
 }
 
 function MeetingPlanner({ links }: { links: MeetingLink[] }) {
@@ -370,6 +377,7 @@ export default async function DashboardPage({
   const incoming = links.filter((l) => l.status === "pending" && isMentorSide && l.requested_by !== "mentor");
   const sentPending = links.filter((l) => l.status === "pending" && !isMentorSide && l.requested_by !== "mentor");
   const network = links.filter((l) => l.status === "active");
+  const meetings = await listMeetings(user.id);
 
   const myContribs =
     user.role === "mentee"
@@ -403,6 +411,7 @@ export default async function DashboardPage({
                 empty="Ninguem na sua rede ainda. Aceite solicitacoes de mentoria."
               />
               <MeetingPlanner links={network as MeetingLink[]} />
+              <UpcomingMeetings meetings={meetings} userId={user.id} />
               {user.role === "company" && (
                 <Card className="border-amber-400/40 bg-amber-400/5">
                   <h2 className="font-semibold">Encontrar talentos</h2>
@@ -423,6 +432,7 @@ export default async function DashboardPage({
                 empty="Voce ainda nao tem mentores. Explore a comunidade e solicite mentoria."
               />
               <MeetingPlanner links={network as MeetingLink[]} />
+              <UpcomingMeetings meetings={meetings} userId={user.id} />
               {sentPending.length > 0 && (
                 <Card>
                   <h2 className="font-semibold">Solicitacoes enviadas</h2>

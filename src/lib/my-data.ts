@@ -99,10 +99,11 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
       4
     ),
     encontros_de_mentoria: await all(
-      `SELECT mm.scheduled_at, mm.duration_minutes, mm.notes, mm.status, mm.created_at
+      `SELECT mm.scheduled_at, mm.duration_minutes, mm.notes, mm.status, mm.confirmed_at,
+              CASE WHEN mm.proposed_by = ? THEN 1 ELSE 0 END AS agendado_por_mim, mm.created_at
        FROM mentorship_meetings mm JOIN mentorships m ON m.id = mm.mentorship_id
        WHERE m.mentor_id = ? OR m.mentee_id = ? ORDER BY mm.scheduled_at DESC`,
-      2
+      3
     ),
     vinculos_com_empresas: await all(
       `SELECT CASE WHEN c.company_id = ? THEN 'empresa' ELSE 'membro' END AS meu_papel, o.name AS outra_parte, c.status, c.message, c.created_at
