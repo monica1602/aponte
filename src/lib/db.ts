@@ -491,6 +491,31 @@ CREATE TABLE IF NOT EXISTS attachments (
   data TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS project_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  due_on TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo','doing','done')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS project_deliveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES project_tasks(id) ON DELETE CASCADE,
+  author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  body TEXT NOT NULL DEFAULT '',
+  link TEXT NOT NULL DEFAULT '',
+  attachment_id INTEGER REFERENCES attachments(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','changes')),
+  reviewer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  review_comment TEXT NOT NULL DEFAULT '',
+  reviewed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -677,6 +702,14 @@ async function ensureMigrations(db: Db) {
   });
   await addColumns(db, "projects", {
     open_contribution: "INTEGER NOT NULL DEFAULT 0",
+    owner_function: "TEXT NOT NULL DEFAULT ''",
+  });
+  await addColumns(db, "project_applications", {
+    project_role: "TEXT NOT NULL DEFAULT 'participant'",
+    project_function: "TEXT NOT NULL DEFAULT ''",
+  });
+  await addColumns(db, "project_access", {
+    project_function: "TEXT NOT NULL DEFAULT ''",
   });
   await addColumns(db, "event_registrations", {
     safe_home_reminded_at: "TEXT",

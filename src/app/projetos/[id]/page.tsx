@@ -6,6 +6,7 @@ import { getSessionUser } from "@/lib/auth";
 import { ReportForm } from "@/components/report-form";
 import { AttachmentList, UploadForm } from "@/components/attachments";
 import { listAttachments } from "@/lib/attachments";
+import { PROJECT_ROLE_PT, teamOf } from "@/lib/project-tasks";
 import { getDb } from "@/lib/db";
 import { getProjectForViewer, isMembersOnlyProject } from "@/lib/projects";
 import { PROJECT_KINDS, PROJECT_STATUS, PROJECT_VISIBILITY, projectVisibility } from "@/lib/catalog";
@@ -42,6 +43,9 @@ export default async function ProjetoPage({
   const { project: p, owner, isOwner, grantedMentors, participants } = view;
   const db = getDb();
   const projectFiles = await listAttachments({ scope: "project", projectId: p.id });
+  const team = await teamOf(view);
+  const inTeam = !!user && team.some((m) => m.id === user.id);
+  const openTasks = inTeam ? Number(((await db.prepare("SELECT COUNT(*) AS n FROM project_tasks WHERE project_id = ? AND status != 'done'").get(p.id)) as { n: number }).n) : 0;
   const canAttach = !!user && (isOwner || participants.some((x) => x.id === user.id));
   const canComment = !!user && (isOwner || grantedMentors.some((m) => m.id === user.id) || participants.some((x) => x.id === user.id));
   const feedback = canComment
@@ -111,6 +115,12 @@ export default async function ProjetoPage({
         {p.help_needed && <div><h2 className="font-semibold">Ajuda necessaria</h2><p className="mt-1 text-sm text-muted">{p.help_needed}</p></div>}
         <SkillChips skills={p.tools} />
 
+        {inTeam && (
+          <Link href={`/projetos/${p.id}/tarefas`} className="block rounded-xl border border-accent/40 bg-accent/5 p-4 hover:bg-accent/10">
+            <span className="font-semibold">Tarefas do projeto</span>
+            <span className="ml-2 text-sm text-muted">{openTasks} {openTasks === 1 ? "aberta" : "abertas"} →</span>
+          </Link>
+        )}
         {canComment && (
           <section aria-labelledby="feedback">
             <h2 id="feedback" className="text-xl font-semibold">Feedback e comentarios</h2>
@@ -292,7 +302,7 @@ export default async function ProjetoPage({
             <h3 className="pt-2 text-sm font-semibold">Participantes ({participants.length})</h3>
             <ul className="space-y-1 text-sm text-muted">{participants.map((x) => (
               <li key={x.id} className="flex items-center justify-between gap-2">
-                <span>{x.name}</span>
+                <span>{x.name}{(() => { const m = team.find((t) => t.id === x.id); return m ? ` · ${PROJECT_ROLE_PT[m.role]}${m.fn ? ` · ${m.fn}` : ""}` : ""; })()}</span>
                 <form action={removeProjectParticipant}>
                   <input type="hidden" name="project_id" value={p.id} /><input type="hidden" name="user_id" value={x.id} />
                   <button className="text-xs text-red-300 hover:underline">Remover</button>

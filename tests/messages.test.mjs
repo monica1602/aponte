@@ -49,3 +49,30 @@ test("anexos: tipo pelo conteudo, tamanho e nome seguro", async () => {
   assert.equal(fileProblem(10, "image/png", "profile"), null);
   assert.equal(safeFilename('Currículo "final".exe.pdf', "application/pdf"), "Curriculo-final-.exe.pdf");
 });
+
+test("tarefas: papeis, distribuicao, situacao, entrega e revisao", async () => {
+  const t = await import("../src/lib/project-tasks.ts");
+  const team = [
+    { id: 1, name: "Dona", role: "coordinator", fn: "", owner: true },
+    { id: 2, name: "Coord", role: "coordinator", fn: "", owner: false },
+    { id: 3, name: "Part", role: "participant", fn: "", owner: false },
+    { id: 4, name: "Mentor", role: "mentor", fn: "", owner: false },
+  ];
+  const [dona, coord, part, mentor] = team;
+  assert.ok(t.canCreateFor(dona, team, 3) && t.canCreateFor(coord, team, null));
+  assert.ok(!t.canCreateFor(dona, team, 4) && !t.canCreateFor(dona, team, 99));
+  assert.ok(t.canCreateFor(part, team, 3) && !t.canCreateFor(part, team, 2) && !t.canCreateFor(mentor, team, 4));
+  assert.deepEqual(t.statusesFor(part, { assignee_id: 3 }), ["todo", "doing"]);
+  assert.deepEqual(t.statusesFor(part, { assignee_id: 2 }), []);
+  assert.deepEqual(t.statusesFor(coord, { assignee_id: 3 }), ["todo", "doing", "done"]);
+  assert.ok(t.canDeleteTask(part, { created_by: 3 }) && !t.canDeleteTask(part, { created_by: 1 }) && !t.canDeleteTask(mentor, { created_by: 4 }));
+  assert.ok(t.canDeliver(part, { assignee_id: 3, status: "doing" }, false));
+  assert.ok(!t.canDeliver(part, { assignee_id: 3, status: "doing" }, true) && !t.canDeliver(part, { assignee_id: 3, status: "done" }, false));
+  assert.ok(t.canReview(mentor, { author_id: 3, status: "pending" }) && t.canReview(coord, { author_id: 3, status: "pending" }));
+  assert.ok(!t.canReview(part, { author_id: 2, status: "pending" }) && !t.canReview(coord, { author_id: 2, status: "pending" }));
+  assert.ok(!t.canReview(mentor, { author_id: 3, status: "approved" }));
+  assert.equal(t.taskProblem("ok", "", "2026-12-01"), null);
+  assert.match(t.taskProblem("x", "", ""), /titulo/);
+  assert.match(t.taskProblem("ok", "", "01/12/2026"), /Prazo/);
+  assert.match(t.taskProblem("ok", "a".repeat(1001), ""), /1000/);
+});

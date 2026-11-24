@@ -429,6 +429,10 @@ export async function deleteAccount(formData: FormData) {
   await getDb().prepare("DELETE FROM certificate_history WHERE certificate_id IN (SELECT id FROM certificates WHERE user_id = ?)").run(user.id);
   await getDb().prepare("UPDATE messages SET body = NULL WHERE sender_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM attachments WHERE owner_id = ?").run(user.id);
+  await getDb().prepare("UPDATE project_tasks SET assignee_id = NULL WHERE assignee_id = ?").run(user.id);
+  await getDb().prepare("UPDATE project_tasks SET created_by = NULL WHERE created_by = ?").run(user.id);
+  await getDb().prepare("UPDATE project_deliveries SET author_id = NULL WHERE author_id = ?").run(user.id);
+  await getDb().prepare("UPDATE project_deliveries SET reviewer_id = NULL WHERE reviewer_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);
   await alertAdmin(`Conta excluida pelo proprio usuario: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   redirect(`/login?msg=${encodeURIComponent("Sua conta e seus dados foram excluidos.")}`);

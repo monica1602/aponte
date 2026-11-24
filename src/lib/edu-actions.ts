@@ -9,6 +9,11 @@ import {
   visibilityColumns, type ProjectVisibility,
 } from "./catalog";
 import { getProjectForViewer } from "./projects";
+import {
+  FUNCTION_MAX, TASK_LIMIT, TASK_MAX, TASK_STATUS, TASK_TEXT_MAX, canCreateFor, canDeleteTask, canDeliver, canReview, getTask, isCoord,
+  releaseMember, statusesFor, taskContext, taskProblem, type TaskStatus,
+} from "./project-tasks";
+import { blockedFor, recordAttempt, tooManyMessage } from "./rate-limit";
 import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { emailUser } from "./user-email";
 
@@ -191,6 +196,7 @@ export async function removeProjectParticipant(formData: FormData) {
     .prepare("UPDATE project_applications SET status = 'rejected' WHERE project_id = ? AND user_id = ? AND status = 'accepted'")
     .run(id, memberId);
   if (!Number(res.changes)) back(ret, "error", "Participante nao encontrado.");
+  await releaseMember(id, memberId);
   await notify(memberId, `Voce foi removido(a) do projeto "${project!.title}" por ${user.name}.`, "/meus-projetos");
   await audit(user.id, "project.participant_removed", "project", id);
   back(ret, "msg", "Participante removido do projeto.");
@@ -210,6 +216,8 @@ export async function deleteProject(formData: FormData) {
      UNION SELECT mentor_id FROM project_mentor_invites WHERE project_id = ?
      UNION SELECT user_id FROM project_member_invites WHERE project_id = ?`
   ).all(id, id, id, id)) as unknown as { user_id: number }[];
+  await db.prepare("DELETE FROM project_deliveries WHERE task_id IN (SELECT id FROM project_tasks WHERE project_id = ?)").run(id);
+  await db.prepare("DELETE FROM project_tasks WHERE project_id = ?").run(id);
   await db.prepare("DELETE FROM attachments WHERE project_id = ?").run(id);
   await db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   for (const p of people) await notify(p.user_id, `O projeto "${project!.title}" foi excluido por ${user.name}.`, "/meus-projetos");
@@ -405,6 +413,7 @@ export async function cancelApplication(formData: FormData) {
   await getDb()
     .prepare("UPDATE project_applications SET status = 'cancelled' WHERE project_id = ? AND user_id = ? AND status IN ('pending','accepted')")
     .run(id, user.id);
+  await releaseMember(id, user.id);
   back(`/projetos/${id}`, "msg", "Inscricao cancelada.");
 }
 
@@ -549,4 +558,161 @@ export async function markNotificationsRead(formData: FormData) {
   const user = await requireUser();
   await getDb().prepare("UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL").run(user.id);
   back(safeReturn(str(formData, "return"), "/notificacoes"), "msg", "Notificacoes marcadas como lidas.");
+}
+
+// ---------------- Tarefas e entregas dos projetos ----------------
+
+async function taskScope(formData: FormData) {
+  const user = await requireUser();
+  const id = Number(formData.get("project_id")) || 0;
+  const ret = `/projetos/${id}/tarefas`;
+  const ctx = await taskContext(id, user);
+  if (!ctx) back("/projetos", "error", "Projeto nao encontrado.");
+  if (!ctx!.me) back(`/projetos/${id}`, "error", "So quem participa do projeto ve as tarefas.");
+  return { user, id, ret, ...ctx!, me: ctx!.me! };
+}
+
+async function tellTask(userId: number, text: string, path: string, subject: string) {
+  await notify(userId, text, path);
+  await emailUser(userId, subject, text, "Ver tarefas", path, "network");
+}
+
+async function taskRateLimit(userId: number, ret: string) {
+  const limit = { action: "project_task", subject: `user:${userId}`, ...TASK_LIMIT };
+  const wait = await blockedFor([limit]);
+  if (wait) back(ret, "error", tooManyMessage(wait));
+  await recordAttempt("project_task", [limit.subject]);
+}
+
+export async function createProjectTask(formData: FormData) {
+  const { user, id, ret, view, team, me } = await taskScope(formData);
+  requireVerified(user, ret);
+  const title = str(formData, "title", 120);
+  const description = str(formData, "description", TASK_TEXT_MAX + 1);
+  const due = str(formData, "due_on", 10);
+  const problem = taskProblem(title, description, due);
+  if (problem) back(ret, "error", problem);
+  const raw = Number(formData.get("assignee_id")) || null;
+  const assignee = me.role === "participant" ? me.id : raw;
+  if (!canCreateFor(me, team, assignee)) back(ret, "error", me.role === "mentor" ? "Mentores revisam as entregas, mas nao criam tarefas." : "Voce so pode criar tarefas para si.");
+  const db = getDb();
+  const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM project_tasks WHERE project_id = ?").get(id)) as { n: number };
+  if (Number(n) >= TASK_MAX) back(ret, "error", `O projeto chegou ao limite de ${TASK_MAX} tarefas.`);
+  await taskRateLimit(user.id, ret);
+  const r = await db.prepare("INSERT INTO project_tasks (project_id, created_by, assignee_id, title, description, due_on) VALUES (?,?,?,?,?,?)")
+    .run(id, user.id, assignee, title, description, due);
+  await audit(user.id, "project.task_created", "project", id);
+  if (assignee && assignee !== user.id) {
+    await tellTask(assignee, `${user.name} passou para voce a tarefa "${title}" do projeto "${view.project.title}".`, ret, "Voce recebeu uma tarefa");
+  }
+  back(`${ret}#tarefa-${Number(r.lastInsertRowid)}`, "msg", "Tarefa criada.");
+}
+
+export async function assignProjectTask(formData: FormData) {
+  const { user, id, ret, view, team, me } = await taskScope(formData);
+  const task = await getTask(Number(formData.get("task_id")) || 0, id);
+  if (!task) back(ret, "error", "Tarefa nao encontrada.");
+  const assignee = Number(formData.get("assignee_id")) || null;
+  if (!isCoord(me) || !canCreateFor(me, team, assignee)) back(ret, "error", "So a coordenacao distribui as tarefas.");
+  if (assignee === task!.assignee_id) back(ret, "msg", "Nada mudou.");
+  await getDb().prepare("UPDATE project_tasks SET assignee_id = ?, updated_at = datetime('now') WHERE id = ?").run(assignee, task!.id);
+  await audit(user.id, "project.task_assigned", "project", id);
+  if (assignee && assignee !== user.id) {
+    await tellTask(assignee, `${user.name} passou para voce a tarefa "${task!.title}" do projeto "${view.project.title}".`, ret, "Voce recebeu uma tarefa");
+  }
+  back(`${ret}#tarefa-${task!.id}`, "msg", assignee ? "Responsavel atualizado." : "A tarefa ficou sem responsavel.");
+}
+
+export async function setProjectTaskStatus(formData: FormData) {
+  const { user, id, ret, me } = await taskScope(formData);
+  const task = await getTask(Number(formData.get("task_id")) || 0, id);
+  if (!task) back(ret, "error", "Tarefa nao encontrada.");
+  const status = one(formData, "status", Object.keys(TASK_STATUS)) as TaskStatus | "";
+  if (!status || !statusesFor(me, task!).includes(status)) {
+    back(ret, "error", status === "done" ? "A tarefa fica Feita quando a entrega e aprovada." : "So o responsavel ou a coordenacao mudam a situacao.");
+  }
+  await getDb().prepare("UPDATE project_tasks SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, task!.id);
+  await audit(user.id, "project.task_status", "project", id);
+  back(`${ret}#tarefa-${task!.id}`, "msg", `Situacao: ${TASK_STATUS[status as TaskStatus]}.`);
+}
+
+export async function deleteProjectTask(formData: FormData) {
+  const { user, id, ret, me } = await taskScope(formData);
+  const task = await getTask(Number(formData.get("task_id")) || 0, id);
+  if (!task || !canDeleteTask(me, task)) back(ret, "error", "Tarefa nao encontrada.");
+  const db = getDb();
+  await db.prepare("DELETE FROM project_deliveries WHERE task_id = ?").run(task!.id);
+  await db.prepare("DELETE FROM project_tasks WHERE id = ?").run(task!.id);
+  await audit(user.id, "project.task_deleted", "project", id);
+  back(ret, "msg", "Tarefa excluida.");
+}
+
+export async function submitProjectDelivery(formData: FormData) {
+  const { user, id, ret, view, team, me } = await taskScope(formData);
+  requireVerified(user, ret);
+  const task = await getTask(Number(formData.get("task_id")) || 0, id);
+  if (!task) back(ret, "error", "Tarefa nao encontrada.");
+  const db = getDb();
+  const pending = await db.prepare("SELECT 1 FROM project_deliveries WHERE task_id = ? AND status = 'pending'").get(task!.id);
+  if (!canDeliver(me, task!, !!pending)) back(ret, "error", pending ? "Esta tarefa ja tem uma entrega em revisao." : "So o responsavel entrega a tarefa.");
+  const body = str(formData, "body", TASK_TEXT_MAX + 1);
+  if (body.length > TASK_TEXT_MAX) back(ret, "error", `O texto pode ter ate ${TASK_TEXT_MAX} caracteres.`);
+  const link = optionalUrl(formData, "link", "O link da entrega", ret);
+  const fileId = Number(formData.get("attachment_id")) || null;
+  if (fileId && !(await db.prepare("SELECT 1 FROM attachments WHERE id = ? AND scope = 'project' AND project_id = ? AND owner_id = ?").get(fileId, id, user.id))) {
+    back(ret, "error", "Arquivo nao encontrado.");
+  }
+  if (!body && !link && !fileId) back(ret, "error", "Escreva um texto, coloque um link ou escolha um arquivo.");
+  await taskRateLimit(user.id, ret);
+  await db.prepare("INSERT INTO project_deliveries (task_id, author_id, body, link, attachment_id) VALUES (?,?,?,?,?)").run(task!.id, user.id, body, link, fileId);
+  await db.prepare("UPDATE project_tasks SET status = 'doing', updated_at = datetime('now') WHERE id = ?").run(task!.id);
+  await audit(user.id, "project.delivery_submitted", "project", id);
+  for (const r of team.filter((m) => (m.role === "coordinator" || m.role === "mentor") && m.id !== user.id)) {
+    await tellTask(r.id, `${user.name} entregou a tarefa "${task!.title}" do projeto "${view.project.title}". A entrega espera revisao.`, ret, "Uma entrega espera revisao");
+  }
+  back(`${ret}#tarefa-${task!.id}`, "msg", "Entrega enviada para revisao.");
+}
+
+export async function reviewProjectDelivery(formData: FormData) {
+  const { user, id, ret, view, me } = await taskScope(formData);
+  const db = getDb();
+  const d = (await db.prepare(
+    `SELECT d.id, d.author_id, d.status, t.id AS task_id, t.title FROM project_deliveries d JOIN project_tasks t ON t.id = d.task_id
+     WHERE d.id = ? AND t.project_id = ?`
+  ).get(Number(formData.get("delivery_id")) || 0, id)) as { id: number; author_id: number | null; status: "pending"; task_id: number; title: string } | undefined;
+  if (!d || !canReview(me, d)) back(ret, "error", d && d.author_id === user.id ? "Voce nao pode revisar a propria entrega." : "Entrega nao encontrada.");
+  const decision = one(formData, "decision", ["approved", "changes"]);
+  if (!decision) back(ret, "error", "Escolha Aprovar ou Pedir ajustes.");
+  const comment = str(formData, "comment", TASK_TEXT_MAX + 1);
+  if (comment.length > TASK_TEXT_MAX) back(ret, "error", `O comentario pode ter ate ${TASK_TEXT_MAX} caracteres.`);
+  if (decision === "changes" && comment.length < 2) back(ret, "error", "Explique quais ajustes sao necessarios.");
+  await db.prepare("UPDATE project_deliveries SET status = ?, reviewer_id = ?, review_comment = ?, reviewed_at = datetime('now') WHERE id = ?").run(decision, user.id, comment, d!.id);
+  await db.prepare("UPDATE project_tasks SET status = ?, updated_at = datetime('now') WHERE id = ?").run(decision === "approved" ? "done" : "doing", d!.task_id);
+  await audit(user.id, "project.delivery_reviewed", "project", id);
+  if (d!.author_id) {
+    await tellTask(d!.author_id, decision === "approved"
+      ? `${user.name} aprovou a sua entrega da tarefa "${d!.title}" do projeto "${view.project.title}".`
+      : `${user.name} pediu ajustes na sua entrega da tarefa "${d!.title}" do projeto "${view.project.title}".`, ret, decision === "approved" ? "Sua entrega foi aprovada" : "Sua entrega precisa de ajustes");
+  }
+  back(`${ret}#tarefa-${d!.task_id}`, "msg", decision === "approved" ? "Entrega aprovada. A tarefa ficou Feita." : "Ajustes pedidos. A tarefa voltou para Fazendo.");
+}
+
+export async function setProjectMemberRole(formData: FormData) {
+  const { user, id, ret, view, team } = await taskScope(formData);
+  if (!view.isOwner) back(ret, "error", "So quem criou o projeto define os papeis.");
+  const member = team.find((m) => m.id === (Number(formData.get("member_id")) || 0));
+  if (!member) back(ret, "error", "Pessoa nao encontrada na equipe.");
+  const fn = str(formData, "function", FUNCTION_MAX);
+  const db = getDb();
+  if (member!.owner) await db.prepare("UPDATE projects SET owner_function = ? WHERE id = ?").run(fn, id);
+  else if (member!.role === "mentor") await db.prepare("UPDATE project_access SET project_function = ? WHERE project_id = ? AND mentor_id = ?").run(fn, id, member!.id);
+  else {
+    const role = str(formData, "role") === "coordinator" ? "coordinator" : "participant";
+    await db.prepare("UPDATE project_applications SET project_role = ?, project_function = ? WHERE project_id = ? AND user_id = ? AND status = 'accepted'").run(role, fn, id, member!.id);
+    if (role !== member!.role) {
+      await notify(member!.id, role === "coordinator" ? `${user.name} colocou voce na coordenacao do projeto "${view.project.title}".` : `Voce voltou a ser participante do projeto "${view.project.title}".`, ret);
+    }
+  }
+  await audit(user.id, "project.member_role", "project", id);
+  back(`${ret}#equipe`, "msg", `Papel de ${member!.name} atualizado.`);
 }

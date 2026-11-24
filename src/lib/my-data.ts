@@ -65,6 +65,8 @@ export const MY_DATA_SECTIONS = {
   denuncias_feitas: "Denuncias feitas",
   avaliacoes_feitas: "Avaliacoes feitas",
   arquivos: "Arquivos enviados",
+  tarefas_de_projetos: "Tarefas de projetos",
+  entregas_em_projetos: "Entregas em projetos",
   notificacoes: "Notificacoes",
   pedidos_sobre_dados: "Pedidos sobre seus dados",
   registro_de_acoes: "Registro das suas acoes (auditoria)",
@@ -180,6 +182,16 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
     denuncias_feitas: await all("SELECT target_type AS tipo, target_label AS denunciado, reason AS motivo, details AS descricao, status AS situacao, created_at, closed_at FROM reports WHERE reporter_id = ? ORDER BY created_at"),
     arquivos: await all(
       "SELECT scope AS lugar, title AS titulo, filename AS arquivo, mime AS tipo, size AS tamanho_bytes, '/arquivos/' || id AS link, created_at FROM attachments WHERE owner_id = ? ORDER BY created_at"
+    ),
+    tarefas_de_projetos: await all(
+      `SELECT p.title AS projeto, t.title AS tarefa, t.description AS descricao, t.status AS situacao, t.due_on AS prazo,
+              CASE WHEN t.created_by = ? THEN 1 ELSE 0 END AS criada_por_mim, CASE WHEN t.assignee_id = ? THEN 1 ELSE 0 END AS sou_responsavel, t.created_at
+       FROM project_tasks t JOIN projects p ON p.id = t.project_id WHERE t.created_by = ? OR t.assignee_id = ? ORDER BY t.created_at`,
+      4
+    ),
+    entregas_em_projetos: await all(
+      `SELECT p.title AS projeto, t.title AS tarefa, d.body AS texto, d.link, d.status AS situacao, d.review_comment AS retorno, d.created_at, d.reviewed_at
+       FROM project_deliveries d JOIN project_tasks t ON t.id = d.task_id JOIN projects p ON p.id = t.project_id WHERE d.author_id = ? ORDER BY d.created_at`
     ),
     avaliacoes_feitas: await all(
       `SELECT r.kind AS tipo, COALESCE(e.title, s.name, '') AS avaliado, r.rating AS nota, r.comment AS comentario, r.as_agreed AS encontros_como_combinado, r.recommend AS recomendaria, r.created_at, r.updated_at

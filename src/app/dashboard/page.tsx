@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TASK_STATUS, brDay, myOpenTasks } from "@/lib/project-tasks";
 import { eventReviewOpen, mentorSummary } from "@/lib/reviews";
 import { PASSWORD_HINT } from "@/lib/password-policy";
 import { EVENT_CATEGORIES } from "@/lib/catalog";
@@ -400,6 +401,7 @@ export default async function DashboardPage({
   const sentPending = links.filter((l) => l.status === "pending" && !isMentorSide && l.requested_by !== "mentor");
   const network = links.filter((l) => l.status === "active");
   const meetings = await listMeetings(user.id);
+  const myTasks = await myOpenTasks(user.id);
   const reviewSummary = isMentorSide ? await mentorSummary(user.id) : null;
 
   const myContribs =
@@ -552,6 +554,19 @@ export default async function DashboardPage({
               <MyEvents events={myEvents} registrations={eventRegistrations} owner />
               <OpportunityEditor myOpps={myOpps} />
             </>
+          )}
+          {myTasks.length > 0 && (
+            <Card>
+              <h2 className="font-semibold">Minhas tarefas</h2>
+              <ul className="mt-3 space-y-2 text-sm">
+                {myTasks.map((t) => (
+                  <li key={t.id} className="rounded-lg bg-raised px-3 py-2">
+                    <Link href={`/projetos/${t.project_id}/tarefas#tarefa-${t.id}`} className="font-medium text-accent hover:underline [overflow-wrap:anywhere]">{t.title}</Link>
+                    <p className="text-xs text-muted">{t.project_title} · {TASK_STATUS[t.status]}{t.due_on && ` · Prazo: ${brDay(t.due_on)}`}</p>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
           <Card>
             <h2 className="font-semibold">Seu perfil publico</h2>
