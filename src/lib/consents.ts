@@ -1,6 +1,8 @@
 import { getDb } from "./db";
 
-export type ConsentKind = "public_profile" | "image" | "event_privacy" | "event_communications" | "event_image";
+export type ConsentKind =
+  | "public_profile" | "image" | "event_privacy" | "event_communications" | "event_image"
+  | "email_network" | "email_reminders" | "news";
 
 export const CONSENT_PT: Record<ConsentKind, string> = {
   public_profile: "Perfil publico",
@@ -8,6 +10,9 @@ export const CONSENT_PT: Record<ConsentKind, string> = {
   event_privacy: "Aviso de privacidade do evento",
   event_communications: "Comunicacoes do evento",
   event_image: "Imagem no evento",
+  email_network: "E-mails de avisos da rede",
+  email_reminders: "E-mails de lembretes de eventos",
+  news: "Novidades da Ponte",
 };
 
 export const CONSENT_SOURCE_PT: Record<string, string> = {
@@ -17,6 +22,7 @@ export const CONSENT_SOURCE_PT: Record<string, string> = {
   perfil: "Perfil",
   inscricao_evento: "Inscricao no evento",
   evento: "Pagina do evento",
+  meus_dados: "Meus dados",
   anterior: "Anterior ao registro",
 };
 

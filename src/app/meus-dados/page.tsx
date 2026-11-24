@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
-import { createDataRequest, requestEmailChange, updateName } from "@/lib/actions";
+import { createDataRequest, requestEmailChange, saveEmailPreferences, updateName } from "@/lib/actions";
 import {
   MY_DATA_SECTIONS, REQUEST_DEADLINE_DAYS, REQUEST_KIND_PT, REQUEST_KINDS, brDate, collectMyData, myDataRequests,
   pendingEmailChange, requestDeadline,
@@ -79,7 +79,31 @@ export default async function MeusDadosPage({ searchParams }: { searchParams: Pr
       </Card>
 
       <Card className="mt-6">
-        <h2 className="font-semibold">4. Fazer um pedido a administracao</h2>
+        <h2 id="comunicacoes" className="scroll-mt-24 font-semibold">4. Comunicacoes por e-mail</h2>
+        <p className="mt-1 text-sm text-muted">Escolha quais e-mails voce quer receber. Os avisos dentro do site, no sino, continuam chegando.</p>
+        <form action={saveEmailPreferences} className="mt-4 space-y-3 text-sm">
+          <label className="flex items-start gap-2 text-muted">
+            <input type="checkbox" checked disabled className="mt-1" />
+            <span><span className="font-medium text-fg">Essenciais</span>: seguranca da conta, confirmacao e troca de e-mail, senha e resposta a pedidos sobre seus dados. Sempre enviados.</span>
+          </label>
+          <label className="flex items-start gap-2 text-muted">
+            <input name="email_network" type="checkbox" defaultChecked={Boolean(user.email_network)} className="mt-1" />
+            <span><span className="font-medium text-fg">Avisos da rede</span>: convites, pedidos de mentoria, candidaturas, contribuicoes e confirmacoes de chegada.</span>
+          </label>
+          <label className="flex items-start gap-2 text-muted">
+            <input name="email_reminders" type="checkbox" defaultChecked={Boolean(user.email_reminders)} className="mt-1" />
+            <span><span className="font-medium text-fg">Lembretes de eventos</span>: o lembrete &quot;Voce chegou bem?&quot; depois de eventos presenciais.</span>
+          </label>
+          <label className="flex items-start gap-2 text-muted">
+            <input name="news" type="checkbox" defaultChecked={Boolean(user.news_consent)} className="mt-1" />
+            <span><span className="font-medium text-fg">Novidades da Ponte</span>: eventos novos e oportunidades. Opcional.</span>
+          </label>
+          <button className={btnSecondaryCls}>Salvar preferencias</button>
+        </form>
+      </Card>
+
+      <Card className="mt-6">
+        <h2 className="font-semibold">5. Fazer um pedido a administracao</h2>
         <p className="mt-1 text-sm text-muted">Para o que voce nao consegue fazer sozinho aqui. A administracao responde em ate {REQUEST_DEADLINE_DAYS} dias.</p>
         <form action={createDataRequest} className="mt-4 space-y-3">
           <Field label="Tipo do pedido">
@@ -112,7 +136,7 @@ export default async function MeusDadosPage({ searchParams }: { searchParams: Pr
       </Card>
 
       <Card className="mt-6">
-        <h2 className="font-semibold">5. Excluir minha conta</h2>
+        <h2 className="font-semibold">6. Excluir minha conta</h2>
         <p className="mt-1 text-sm text-muted">Apaga de forma definitiva sua conta e os dados ligados a ela.</p>
         <Link href="/perfil#excluir-conta" className="mt-3 inline-block text-sm text-red-300 hover:underline">Ir para a exclusao da conta →</Link>
       </Card>

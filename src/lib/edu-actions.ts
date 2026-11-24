@@ -259,7 +259,7 @@ export async function inviteProjectMentor(formData: FormData) {
   ).run(id, mentorId, str(formData, "message", 500));
   if (!Number(res.changes)) back(ret, "error", `Voce ja convidou ${mentor!.name}. Aguarde a resposta.`);
   await notify(mentorId, `${user.name} convidou voce para ajudar no projeto "${project!.title}".`, "/meus-projetos");
-  await emailUser(mentorId, `${user.name} convidou voce para ajudar em um projeto`, `${user.name} convidou voce para ser mentor do projeto "${project!.title}" na Ponte. Entre no site para aceitar ou recusar.`, "Ver convite", "/meus-projetos");
+  await emailUser(mentorId, `${user.name} convidou voce para ajudar em um projeto`, `${user.name} convidou voce para ser mentor do projeto "${project!.title}" na Ponte. Entre no site para aceitar ou recusar.`, "Ver convite", "/meus-projetos", "network");
   await audit(user.id, "project.mentor_invited", "project", id);
   await alertAdmin(`Novo convite: ${user.name} convidou ${mentor!.name} para o projeto "${project!.title}"`);
   back(ret, "msg", `Convite enviado para ${mentor!.name}. Voce recebe um aviso quando ele responder.`);
@@ -307,7 +307,7 @@ export async function inviteProjectMember(formData: FormData) {
   ).run(id, memberId, str(formData, "message", 500));
   if (!Number(res.changes)) back(ret, "error", `Voce ja convidou ${member!.name}. Aguarde a resposta.`);
   await notify(memberId, `${user.name} convidou voce para participar do projeto "${project!.title}".`, "/meus-projetos");
-  await emailUser(memberId, `${user.name} convidou voce para participar de um projeto`, `${user.name} convidou voce para participar do projeto "${project!.title}" na Ponte. Entre no site para aceitar ou recusar.`, "Ver convite", "/meus-projetos");
+  await emailUser(memberId, `${user.name} convidou voce para participar de um projeto`, `${user.name} convidou voce para participar do projeto "${project!.title}" na Ponte. Entre no site para aceitar ou recusar.`, "Ver convite", "/meus-projetos", "network");
   await audit(user.id, "project.member_invited", "project", id);
   await alertAdmin(`Novo convite: ${user.name} convidou ${member!.name} para o projeto "${project!.title}"`);
   back(ret, "msg", `Convite enviado para ${member!.name}. Voce recebe um aviso quando a pessoa responder.`);
@@ -380,7 +380,7 @@ export async function applyToProject(formData: FormData) {
     await audit(user.id, "project.contribution_started", "project", id);
     await alertAdmin(`Nova contribuicao: ${who} comecou a contribuir com o projeto "${p.title}"`);
     await notify(p.owner_id, `${who} comecou a contribuir com o projeto "${p.title}".`, ret);
-    await emailUser(p.owner_id, `${user.name} comecou a contribuir com o seu projeto`, `${who} comecou a contribuir com o projeto "${p.title}" na Ponte.${message ? ` Mensagem: "${message}"` : ""} Se precisar, voce pode remover a pessoa na pagina do projeto.`, "Ver projeto", ret);
+    await emailUser(p.owner_id, `${user.name} comecou a contribuir com o seu projeto`, `${who} comecou a contribuir com o projeto "${p.title}" na Ponte.${message ? ` Mensagem: "${message}"` : ""} Se precisar, voce pode remover a pessoa na pagina do projeto.`, "Ver projeto", ret, "network");
     back(ret, "msg", "Pronto! Voce ja contribui com este projeto. O responsavel foi avisado.");
   }
   await getDb()
@@ -391,7 +391,7 @@ export async function applyToProject(formData: FormData) {
     .run(id, user.id, message);
   await alertAdmin(`Nova candidatura: ${user.name} se candidatou ao projeto "${p.title}"`);
   await notify(p.owner_id, `${user.name} se candidatou ao projeto "${p.title}".`, ret);
-  await emailUser(p.owner_id, `${user.name} se candidatou ao seu projeto`, `${user.name} (${ROLE_PT[user.role] ?? user.role}) se candidatou ao projeto "${p.title}" na Ponte.${message ? ` Mensagem: "${message}"` : ""} Entre no site para aceitar ou recusar.`, "Ver candidatura", ret);
+  await emailUser(p.owner_id, `${user.name} se candidatou ao seu projeto`, `${user.name} (${ROLE_PT[user.role] ?? user.role}) se candidatou ao projeto "${p.title}" na Ponte.${message ? ` Mensagem: "${message}"` : ""} Entre no site para aceitar ou recusar.`, "Ver candidatura", ret, "network");
   back(ret, "msg", "Candidatura enviada. Voce sera avisado(a) quando o responsavel responder.");
 }
 

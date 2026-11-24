@@ -20,6 +20,9 @@ export interface User {
   public_profile_consent: number;
   public_profile_consent_at: string | null;
   show_email: number;
+  email_network: number;
+  email_reminders: number;
+  news_consent: number;
   email_status: EmailStatus;
   email_verified_at: string | null;
   employment_terms_accepted_at: string | null;
@@ -526,6 +529,9 @@ async function ensureMigrations(db: Db) {
     show_email: "INTEGER NOT NULL DEFAULT 0",
     email_status: "TEXT NOT NULL DEFAULT 'verified'",
     email_verified_at: "TEXT",
+    email_network: "INTEGER NOT NULL DEFAULT 1",
+    email_reminders: "INTEGER NOT NULL DEFAULT 1",
+    news_consent: "INTEGER NOT NULL DEFAULT 0",
   });
   await addColumns(db, "events", {
     category: "TEXT NOT NULL DEFAULT ''",

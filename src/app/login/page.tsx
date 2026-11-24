@@ -1,13 +1,18 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { login } from "@/lib/actions";
+import { getSessionUser } from "@/lib/auth";
+import { safeReturn } from "@/lib/session";
 import { Card, Flash, inputCls, btnCls } from "@/components/ui";
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; msg?: string }>;
+  searchParams: Promise<{ error?: string; msg?: string; next?: string }>;
 }) {
   const sp = await searchParams;
+  const next = safeReturn(sp.next ?? "", "");
+  if (next && (await getSessionUser())) redirect(next);
   return (
     <div className="mx-auto max-w-sm py-10">
       <Card>
@@ -27,6 +32,7 @@ export default async function LoginPage({
           <span className="h-px flex-1 bg-line" />
         </div>
         <form action={login} className="space-y-4">
+          {next && <input type="hidden" name="next" value={next} />}
           <div>
             <label className="mb-1 block text-sm font-medium">Email</label>
             <input name="email" type="email" required className={inputCls} />

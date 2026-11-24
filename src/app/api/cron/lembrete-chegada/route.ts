@@ -39,7 +39,8 @@ export async function GET(request: Request) {
       "Voce chegou bem?",
       `Voce participou do evento "${r.title}". Se ja chegou bem em casa, por favor confirme ao organizador clicando no botao abaixo.`,
       "Cheguei bem em casa",
-      "/dashboard"
+      "/dashboard",
+      "reminders"
     );
     sent++;
   }

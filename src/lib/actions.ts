@@ -192,12 +192,14 @@ export async function removeInvite(formData: FormData) {
 }
 
 export async function login(formData: FormData) {
+  const next = safeReturn(str(formData, "next"), "");
+  const loginPage = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
   const email = str(formData, "email").toLowerCase();
   const password = str(formData, "password");
   const ip = await clientIp();
   const emailLimit = { action: "login", subject: `email:${email}`, max: 5, windowMin: 15 };
   const wait = await blockedFor([emailLimit, { action: "login", subject: `ip:${ip}`, max: 30, windowMin: 15 }]);
-  if (wait) back("/login", "error", tooManyMessage(wait));
+  if (wait) back(loginPage, "error", tooManyMessage(wait));
   const user = await getDb().prepare("SELECT * FROM users WHERE email = ?").get(email) as
     | User
     | undefined;
@@ -209,10 +211,11 @@ export async function login(formData: FormData) {
         "Varias tentativas de entrar na sua conta",
         "Houve varias tentativas de entrar na sua conta com a senha errada. Por seguranca, o login ficou bloqueado por 15 minutos. Se nao foi voce, recomendamos trocar sua senha.",
         "Trocar minha senha",
-        "/esqueci-senha"
+        "/esqueci-senha",
+        "essential"
       );
     }
-    back("/login", "error", "Email ou senha incorretos.");
+    back(loginPage, "error", "Email ou senha incorretos.");
   }
   await clearAttempts("login", emailLimit.subject);
   if (user!.account_status === "pending" && !REQUIRE_APPROVAL) {
@@ -221,13 +224,13 @@ export async function login(formData: FormData) {
     user!.account_status = "active";
   }
   if (user!.account_status === "pending") {
-    back("/login", "error", "Seu cadastro esta aguardando aprovacao do administrador.");
+    back(loginPage, "error", "Seu cadastro esta aguardando aprovacao do administrador.");
   }
   if (user!.account_status === "rejected") {
-    back("/login", "error", "Seu cadastro nao foi aprovado. Fale com o administrador.");
+    back(loginPage, "error", "Seu cadastro nao foi aprovado. Fale com o administrador.");
   }
   if (user!.account_status === "disputed") {
-    back("/login", "error", "Esta conta foi desativada porque o dono do e-mail informou que nao criou o cadastro. Fale com o administrador.");
+    back(loginPage, "error", "Esta conta foi desativada porque o dono do e-mail informou que nao criou o cadastro. Fale com o administrador.");
   }
   if (!user!.must_change_password && passwordProblem(password)) {
     await getDb().prepare("UPDATE users SET must_change_password = 1 WHERE id = ?").run(user!.id);
@@ -236,7 +239,7 @@ export async function login(formData: FormData) {
   await createSession(user!.id);
   if (user!.must_change_password) redirect("/primeiro-acesso");
   if ((await pendingLegalDocs(user!.id)).length) redirect("/novos-termos");
-  redirect("/dashboard");
+  redirect(next || "/dashboard");
 }
 
 export async function registerAccount(formData: FormData) {
@@ -453,7 +456,7 @@ export async function requestMentorship(formData: FormData) {
     back(ret, "error", "Voce ja possui uma solicitacao com este mentor.");
   }
   await notify(mentorId, `${user.name} pediu sua mentoria.`, "/dashboard");
-  await emailUser(mentorId, `${user.name} pediu sua mentoria`, `${user.name} quer fazer parte da sua rede e pediu sua mentoria. Entre na Ponte para aceitar ou recusar.`, "Ver pedido", "/dashboard");
+  await emailUser(mentorId, `${user.name} pediu sua mentoria`, `${user.name} quer fazer parte da sua rede e pediu sua mentoria. Entre na Ponte para aceitar ou recusar.`, "Ver pedido", "/dashboard", "network");
   await alertAdmin(`Novo pedido de mentoria: ${user.name} pediu mentoria a ${await nameOf(mentorId)}`);
   back(ret, "msg", "Solicitacao de mentoria enviada. Voce sera avisado(a) quando o mentor responder.");
 }
@@ -501,7 +504,7 @@ export async function inviteMentee(formData: FormData) {
   }
   await alertAdmin(`Novo convite de mentoria: ${user.name} convidou ${await nameOf(menteeId)}`);
   await notify(menteeId, `${user.name} convidou voce para uma mentoria. Aceite ou recuse em Mentores.`, "/minha-rede?aba=mentores");
-  await emailUser(menteeId, `${user.name} convidou voce para uma mentoria`, `${user.name} convidou voce para fazer parte da rede de mentoria na Ponte. Entre no site para aceitar ou recusar o convite.`, "Ver convite", "/minha-rede?aba=mentores");
+  await emailUser(menteeId, `${user.name} convidou voce para uma mentoria`, `${user.name} convidou voce para fazer parte da rede de mentoria na Ponte. Entre no site para aceitar ou recusar o convite.`, "Ver convite", "/minha-rede?aba=mentores", "network");
   back(ret, "msg", "Convite enviado. O mentorado sera avisado e podera aceitar ou recusar.");
 }
 
@@ -547,7 +550,7 @@ export async function inviteToCompany(formData: FormData) {
     back(ret, "error", "Esta pessoa ja faz parte da sua rede ou ja tem um convite seu.");
   }
   await notify(memberId, `${user.name} convidou voce para fazer parte da rede da empresa. Aceite ou recuse em Empresas.`, "/empresas");
-  await emailUser(memberId, `${user.name} convidou voce para a rede da empresa`, `A empresa ${user.name} enviou uma proposta para voce fazer parte da rede dela na Ponte. Entre no site para aceitar ou recusar.`, "Ver proposta", "/empresas");
+  await emailUser(memberId, `${user.name} convidou voce para a rede da empresa`, `A empresa ${user.name} enviou uma proposta para voce fazer parte da rede dela na Ponte. Entre no site para aceitar ou recusar.`, "Ver proposta", "/empresas", "network");
   await alertAdmin(`Novo convite de empresa: ${user.name} convidou ${await nameOf(memberId)} (${ROLE_PT[member!.role]})`);
   back(ret, "msg", "Convite enviado. A pessoa recebe um aviso e um e-mail e pode aceitar ou recusar.");
 }
@@ -883,7 +886,7 @@ export async function confirmSafeHome(formData: FormData) {
   const text = `${user.name} confirmou que chegou bem em casa apos o evento "${row.title}".`;
   if (row.owner_id !== user.id) {
     await notify(row.owner_id, text, "/meus-eventos");
-    await emailUser(row.owner_id, `${user.name} chegou bem em casa`, text, "Ver meus eventos", "/meus-eventos");
+    await emailUser(row.owner_id, `${user.name} chegou bem em casa`, text, "Ver meus eventos", "/meus-eventos", "network");
   }
   await alertAdmin(text);
   back(ret, "msg", "Confirmacao registrada. Que bom que voce chegou bem! O organizador foi avisado.");
@@ -1130,6 +1133,27 @@ export async function answerDataRequest(formData: FormData) {
   await db.prepare("UPDATE data_requests SET status = 'done', response = ?, answered_at = datetime('now') WHERE id = ?").run(response, id);
   await audit(null, "data_request.answered", "data_request", id);
   await notify(req!.user_id, "Seu pedido sobre seus dados foi respondido.", MY_DATA);
-  await emailUser(req!.user_id, "seu pedido sobre seus dados foi respondido", "A administracao da Ponte respondeu ao seu pedido sobre seus dados.", "Ver a resposta", MY_DATA);
+  await emailUser(req!.user_id, "seu pedido sobre seus dados foi respondido", "A administracao da Ponte respondeu ao seu pedido sobre seus dados.", "Ver a resposta", MY_DATA, "essential");
   back("/admin/pedidos", "msg", "Pedido respondido e concluido.");
+}
+
+export async function saveEmailPreferences(formData: FormData) {
+  const user = await me();
+  const next = {
+    email_network: formData.get("email_network") === "on",
+    email_reminders: formData.get("email_reminders") === "on",
+    news: formData.get("news") === "on",
+  };
+  const db = getDb();
+  const row = (await db.prepare("SELECT email_network, email_reminders, news_consent FROM users WHERE id = ?").get(user.id)) as
+    { email_network: number; email_reminders: number; news_consent: number };
+  await db
+    .prepare("UPDATE users SET email_network = ?, email_reminders = ?, news_consent = ? WHERE id = ?")
+    .run(next.email_network ? 1 : 0, next.email_reminders ? 1 : 0, next.news ? 1 : 0, user.id);
+  await recordConsentChanges(user.id, [
+    ["email_network", !!Number(row.email_network), next.email_network],
+    ["email_reminders", !!Number(row.email_reminders), next.email_reminders],
+    ["news", !!Number(row.news_consent), next.news],
+  ], "meus_dados");
+  back(MY_DATA, "msg", "Preferencias de e-mail salvas.");
 }
