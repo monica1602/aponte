@@ -37,3 +37,12 @@ test("caracteres fora das fontes do PDF nao quebram a geracao", async () => {
   );
   assert.ok(textOf(bytes).includes("Ana"));
 });
+
+test("PDF do certificado tem o QR code de validacao com a legenda", async () => {
+  const bytes = await certificatePdf(
+    { title: "Oficina", verification_code: "QR1", issued_at: "2026-11-23 20:00:00", recipient_name: "Ana", issuer_name: "Carlos", starts_at: null },
+    "https://exemplo.dev/certificados/QR1"
+  );
+  assert.match(Buffer.from(bytes).toString("latin1"), /\/Subtype \/Image/);
+  assert.ok(textOf(bytes).includes("Escaneie para validar"));
+});

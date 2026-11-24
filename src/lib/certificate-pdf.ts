@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont } from "pdf-lib";
+import QRCode from "qrcode";
 
 export type CertificateData = {
   title: string;
@@ -63,6 +64,13 @@ export async function certificatePdf(c: CertificateData, validationUrl: string):
   center(`Emitido por ${c.issuer_name ?? "conta excluida"} em ${brDate(c.issued_at)}`, regular, 11, muted); y -= 18;
   center(`Codigo de validacao: ${c.verification_code}`, bold, 11); y -= 18;
   center(`Valide em: ${validationUrl}`, regular, 10, muted);
+
+  const qr = await doc.embedPng(await QRCode.toBuffer(validationUrl, { margin: 1, width: 240 }));
+  const qrSize = 80;
+  const qrX = width - 40 - 8 - qrSize;
+  page.drawImage(qr, { x: qrX, y: 56, width: qrSize, height: qrSize });
+  const legend = "Escaneie para validar";
+  page.drawText(legend, { x: qrX + (qrSize - regular.widthOfTextAtSize(legend, 8)) / 2, y: 44, size: 8, font: regular, color: muted });
 
   return doc.save();
 }
