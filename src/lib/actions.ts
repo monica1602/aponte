@@ -21,7 +21,7 @@ import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
-import { checkInWindow, spTime } from "./event-time";
+import { checkInWindow, eventStarted, spTime } from "./event-time";
 import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate-limit";
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
 import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
@@ -763,20 +763,42 @@ export async function requestEventAccess(formData: FormData) {
     : event!.require_approval
       ? "requested"
       : "approved";
-  try {
-    const result = await db
+  const communications = formData.get("communications") === "on";
+  const image = formData.get("image") === "on";
+  const cancelled = (await db
+    .prepare("SELECT id, communication_consent, image_consent FROM event_registrations WHERE event_id = ? AND user_id = ? AND status = 'cancelled'")
+    .get(eventId, user.id)) as { id: number; communication_consent: number; image_consent: number } | undefined;
+  if (cancelled) {
+    const again = await db
       .prepare(
-        `INSERT INTO event_registrations (event_id, user_id, status, lgpd_accepted_at, communication_consent, image_consent)
-         VALUES (?,?,?,datetime('now'),?,?)`
+        `UPDATE event_registrations SET status = ?, lgpd_accepted_at = datetime('now'), communication_consent = ?, image_consent = ?,
+           checked_in_at = NULL, checked_out_at = NULL, safe_home_at = NULL, safe_home_reminded_at = NULL, created_at = datetime('now')
+         WHERE id = ? AND status = 'cancelled'`
       )
-      .run(eventId, user.id, status, formData.get("communications") === "on" ? 1 : 0, formData.get("image") === "on" ? 1 : 0);
-    await audit(user.id, "event.registration_requested", "event_registration", Number(result.lastInsertRowid));
-  } catch {
-    back(ret, "error", "Voce ja possui uma inscricao neste evento.");
+      .run(status, communications ? 1 : 0, image ? 1 : 0, cancelled.id);
+    if (!again.changes) back(ret, "error", "Voce ja possui uma inscricao neste evento.");
+    await audit(user.id, "event.registration_requested", "event_registration", cancelled.id);
+    await recordConsent(user.id, "event_privacy", true, "inscricao_evento", eventId);
+    await recordConsentChanges(user.id, [
+      ["event_communications", !!Number(cancelled.communication_consent), communications],
+      ["event_image", !!Number(cancelled.image_consent), image],
+    ], "inscricao_evento", eventId);
+  } else {
+    try {
+      const result = await db
+        .prepare(
+          `INSERT INTO event_registrations (event_id, user_id, status, lgpd_accepted_at, communication_consent, image_consent)
+           VALUES (?,?,?,datetime('now'),?,?)`
+        )
+        .run(eventId, user.id, status, communications ? 1 : 0, image ? 1 : 0);
+      await audit(user.id, "event.registration_requested", "event_registration", Number(result.lastInsertRowid));
+    } catch {
+      back(ret, "error", "Voce ja possui uma inscricao neste evento.");
+    }
+    await recordConsent(user.id, "event_privacy", true, "inscricao_evento", eventId);
+    if (communications) await recordConsent(user.id, "event_communications", true, "inscricao_evento", eventId);
+    if (image) await recordConsent(user.id, "event_image", true, "inscricao_evento", eventId);
   }
-  await recordConsent(user.id, "event_privacy", true, "inscricao_evento", eventId);
-  if (formData.get("communications") === "on") await recordConsent(user.id, "event_communications", true, "inscricao_evento", eventId);
-  if (formData.get("image") === "on") await recordConsent(user.id, "event_image", true, "inscricao_evento", eventId);
   const messages: Record<string, string> = {
     approved: "Inscricao confirmada.",
     requested: "Solicitacao enviada para aprovacao do organizador.",
@@ -805,6 +827,43 @@ export async function updateEventConsents(formData: FormData) {
   back(ret, "msg", "Permissoes atualizadas.");
 }
 
+/** Promove a lista de espera e avisa as pessoas promovidas e o organizador. */
+async function fillFromWaitlist(eventId: number, title: string, ownerId: number, actorId: number) {
+  const promoted = await promoteWaitlist(eventId, actorId);
+  for (const p of promoted) {
+    const text = p.status === "approved"
+      ? `Abriu uma vaga no evento "${title}" e sua inscricao saiu da lista de espera: ela esta confirmada.`
+      : `Abriu uma vaga no evento "${title}" e sua inscricao saiu da lista de espera: agora ela aguarda a aprovacao da organizacao.`;
+    await notify(p.userId, text, `/eventos/${eventId}`);
+    await emailUser(p.userId, `Abriu uma vaga no evento ${title}`, text, "Ver evento", `/eventos/${eventId}`, "network");
+    await notify(ownerId, `${p.name} saiu da lista de espera do evento "${title}" e ${p.status === "approved" ? "esta confirmada" : "aguarda sua aprovacao"}.`, "/dashboard");
+  }
+  return promoted;
+}
+
+export async function cancelEventRegistration(formData: FormData) {
+  const user = await me();
+  const eventId = Number(formData.get("event_id"));
+  const ret = `/eventos/${eventId}`;
+  const db = getDb();
+  const reg = (await db.prepare(
+    `SELECT r.id, r.status, r.checked_in_at, e.title, e.owner_id, e.starts_at FROM event_registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.event_id = ? AND r.user_id = ?`
+  ).get(eventId, user.id)) as { id: number; status: string; checked_in_at: string | null; title: string; owner_id: number; starts_at: string } | undefined;
+  if (!reg || !["requested", "approved", "waitlist"].includes(reg.status)) back(ret, "error", "Voce nao tem uma inscricao ativa neste evento.");
+  if (reg.checked_in_at) back(ret, "error", "Nao e possivel cancelar: sua presenca ja foi registrada.");
+  if (eventStarted(reg.starts_at)) back(ret, "error", "Nao e possivel cancelar: o cancelamento vale ate o inicio do evento.");
+  if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para cancelar a inscricao.");
+  const done = await db.prepare(
+    "UPDATE event_registrations SET status = 'cancelled' WHERE id = ? AND status IN ('requested','approved','waitlist') AND checked_in_at IS NULL"
+  ).run(reg.id);
+  if (!done.changes) back(ret, "error", "Voce nao tem uma inscricao ativa neste evento.");
+  await audit(user.id, "event.registration_cancelled", "event_registration", reg.id);
+  await notify(reg.owner_id, `${user.name} cancelou a inscricao no evento "${reg.title}".`, "/meus-eventos");
+  if (reg.status !== "waitlist") await fillFromWaitlist(eventId, reg.title, reg.owner_id, user.id);
+  back(ret, "msg", "Inscricao cancelada.");
+}
+
 export async function reviewEventRegistration(formData: FormData) {
   const user = await me();
   if (!isEventOwner(user)) redirect("/dashboard");
@@ -831,16 +890,7 @@ export async function reviewEventRegistration(formData: FormData) {
     .run(decision === "approve" ? "approved" : "declined", registrationId);
   await audit(user.id, `event.registration_${decision}d`, "event_registration", registrationId);
   if (decision === "approve") back(ret, "msg", "Inscricao aprovada.");
-  const promoted = await promoteWaitlist(registration!.event_id, user.id);
-  const title = registration!.title;
-  for (const p of promoted) {
-    const text = p.status === "approved"
-      ? `Abriu uma vaga no evento "${title}" e sua inscricao saiu da lista de espera: ela esta confirmada.`
-      : `Abriu uma vaga no evento "${title}" e sua inscricao saiu da lista de espera: agora ela aguarda a aprovacao da organizacao.`;
-    await notify(p.userId, text, `/eventos/${registration!.event_id}`);
-    await emailUser(p.userId, `Abriu uma vaga no evento ${title}`, text, "Ver evento", `/eventos/${registration!.event_id}`, "network");
-    await notify(user.id, `${p.name} saiu da lista de espera do evento "${title}" e ${p.status === "approved" ? "esta confirmada" : "aguarda sua aprovacao"}.`, "/dashboard");
-  }
+  const promoted = await fillFromWaitlist(registration!.event_id, registration!.title, user.id, user.id);
   back(ret, "msg", promoted.length
     ? `Inscricao recusada. ${promoted.map((p) => p.name).join(", ")} saiu da lista de espera e ocupou a vaga.`
     : "Inscricao recusada.");

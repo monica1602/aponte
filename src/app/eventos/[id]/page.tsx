@@ -4,7 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb, type PlatformEvent } from "@/lib/db";
-import { deleteEvent, requestEventAccess, updateEventConsents } from "@/lib/actions";
+import { cancelEventRegistration, deleteEvent, requestEventAccess, updateEventConsents } from "@/lib/actions";
+import { eventStarted } from "@/lib/event-time";
 import { DeleteConfirm } from "@/components/delete-confirm";
 import { Badge, Card, Flash, btnCls, btnSecondaryCls } from "@/components/ui";
 
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Evento — Ponte" };
 
 const modalityLabel: Record<string, string> = { online: "Online", in_person: "Presencial", hybrid: "Hibrido" };
+const regLabel: Record<string, string> = { approved: "Inscricao confirmada", requested: "Aguardando aprovacao", waitlist: "Lista de espera", declined: "Inscricao recusada", cancelled: "Inscricao cancelada" };
 
 export default async function EventoPage({
   params, searchParams,
@@ -32,9 +34,10 @@ export default async function EventoPage({
     .get(Number(id)) as (PlatformEvent & { owner_name: string; approved: number }) | undefined;
   if (!e) notFound();
   const reg = user
-    ? (await db.prepare("SELECT status, communication_consent, image_consent FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string; communication_consent: number; image_consent: number } | undefined)
+    ? (await db.prepare("SELECT status, checked_in_at, communication_consent, image_consent FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string; checked_in_at: string | null; communication_consent: number; image_consent: number } | undefined)
     : undefined;
-  const registration = reg?.status;
+  const registration = reg?.status === "cancelled" ? undefined : reg?.status;
+  const canCancel = !!reg && ["requested", "approved", "waitlist"].includes(reg.status) && !reg.checked_in_at && !eventStarted(e.starts_at);
   const full = e.capacity !== null && e.approved >= e.capacity;
   const ret = `/eventos/${e.id}`;
   const showLink = e.online_url && registration === "approved";
@@ -71,7 +74,7 @@ export default async function EventoPage({
           <p className="text-sm text-muted">Voce organiza este evento. Gerencie as inscricoes em Meus eventos.</p>
         ) : registration ? (
           <>
-            <Badge kind={registration} label={registration === "approved" ? "Inscricao confirmada" : registration === "requested" ? "Aguardando aprovacao" : "Lista de espera"} />
+            <Badge kind={registration} label={regLabel[registration] ?? registration} />
             <form action={updateEventConsents} className="mt-4 space-y-2">
               <input type="hidden" name="event_id" value={e.id} />
               <p className="text-sm font-medium">Suas permissoes neste evento</p>
@@ -79,9 +82,23 @@ export default async function EventoPage({
               <label className="flex items-start gap-2 text-sm text-muted"><input name="image" type="checkbox" defaultChecked={Boolean(reg!.image_consent)} className="mt-1" />Autorizo uso de imagem deste evento (opcional).</label>
               <button className={btnSecondaryCls}>Salvar permissoes</button>
             </form>
+            {canCancel && (
+              <details className="mt-6 rounded-md border border-red-400/30 bg-red-400/5 px-3 py-2">
+                <summary className="cursor-pointer text-sm font-semibold text-red-300">Cancelar minha inscricao</summary>
+                <form action={cancelEventRegistration} data-no-keep className="mt-3 space-y-3">
+                  <input type="hidden" name="event_id" value={e.id} />
+                  <p className="text-sm text-muted">Sua vaga fica livre para a proxima pessoa da lista de espera. Voce pode se inscrever de novo depois, seguindo as regras de vagas do evento.</p>
+                  <label className="flex items-center gap-2 text-sm text-muted">
+                    <input type="checkbox" name="confirm" value="1" required /> Confirmo que quero cancelar minha inscricao.
+                  </label>
+                  <button className="rounded-md bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600">Cancelar inscricao</button>
+                </form>
+              </details>
+            )}
           </>
         ) : (
           <form action={requestEventAccess} className="space-y-2">
+            {reg?.status === "cancelled" && <p className="text-sm text-muted"><Badge kind="cancelled" label={regLabel.cancelled} /> Voce pode se inscrever de novo.</p>}
             <input type="hidden" name="event_id" value={e.id} />
             <input type="hidden" name="return" value={ret} />
             <label className="flex items-start gap-2 text-sm text-muted"><input name="lgpd" type="checkbox" required className="mt-1" />Li o <Link href="/privacidade" className="text-accent underline">aviso de privacidade</Link> e autorizo o uso dos meus dados para gerir esta inscricao.</label>

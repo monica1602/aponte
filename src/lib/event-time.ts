@@ -14,3 +14,7 @@ export function checkInWindow(startsAt: string, endsAt: string, now = Date.now()
 export function spTime(ms: number): string {
   return new Date(ms).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 }
+
+export function eventStarted(startsAt: string, now = Date.now()): boolean {
+  return eventTimeMs(startsAt) <= now;
+}
