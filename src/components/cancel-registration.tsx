@@ -1,10 +1,10 @@
 import { cancelEventRegistration } from "@/lib/actions";
 import { eventStarted } from "@/lib/event-time";
 
-type Reg = { status: string; checked_in_at: string | null; starts_at: string };
+type Reg = { status: string; checked_in_at: string | null; starts_at: string; event_status: string };
 
 export function canCancelRegistration(r: Reg): boolean {
-  return ["requested", "approved", "waitlist"].includes(r.status) && !r.checked_in_at && !eventStarted(r.starts_at);
+  return r.event_status === "published" && ["requested", "approved", "waitlist"].includes(r.status) && !r.checked_in_at && !eventStarted(r.starts_at);
 }
 
 /** Cancelamento da inscricao com confirmacao, ate o inicio do evento. */

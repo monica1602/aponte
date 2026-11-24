@@ -7,6 +7,7 @@ import { getDb, type PlatformEvent } from "@/lib/db";
 import { deleteEvent, requestEventAccess, updateEventConsents } from "@/lib/actions";
 import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
 import { DeleteConfirm } from "@/components/delete-confirm";
+import { CancelEvent } from "@/components/cancel-event";
 import { Badge, Card, Flash, btnCls, btnSecondaryCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -28,19 +29,22 @@ export default async function EventoPage({
   const e = await db
     .prepare(
       `SELECT e.*, u.name AS owner_name,
-        (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved
-       FROM events e JOIN users u ON u.id = e.owner_id WHERE e.id = ? AND e.status = 'published'`
+        (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved,
+        (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id) + (SELECT COUNT(*) FROM certificates c WHERE c.event_id = e.id) AS history
+       FROM events e JOIN users u ON u.id = e.owner_id WHERE e.id = ? AND e.status IN ('published','cancelled')`
     )
-    .get(Number(id)) as (PlatformEvent & { owner_name: string; approved: number }) | undefined;
+    .get(Number(id)) as (PlatformEvent & { owner_name: string; approved: number; history: number }) | undefined;
   if (!e) notFound();
   const reg = user
     ? (await db.prepare("SELECT status, checked_in_at, communication_consent, image_consent FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string; checked_in_at: string | null; communication_consent: number; image_consent: number } | undefined)
     : undefined;
+  const cancelledEvent = e.status === "cancelled";
+  if (cancelledEvent && user?.id !== e.owner_id && !reg) notFound();
   const registration = reg?.status === "cancelled" ? undefined : reg?.status;
-  const canCancel = !!reg && canCancelRegistration({ ...reg, starts_at: e.starts_at });
+  const canCancel = !!reg && canCancelRegistration({ ...reg, starts_at: e.starts_at, event_status: e.status });
   const full = e.capacity !== null && e.approved >= e.capacity;
   const ret = `/eventos/${e.id}`;
-  const showLink = e.online_url && registration === "approved";
+  const showLink = e.online_url && registration === "approved" && !cancelledEvent;
 
   return (
     <div className="mx-auto max-w-3xl py-10">
@@ -51,6 +55,7 @@ export default async function EventoPage({
         {e.category && <Badge kind="projeto" label={e.category} />}
       </div>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">{e.title}</h1>
+      {cancelledEvent && <p className="mt-3 rounded-md border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300">Este evento foi cancelado pela organizacao.</p>}
       <p className="mt-2 text-sm text-muted">Organizado por {e.organizer || e.owner_name}</p>
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <Card><dt className="text-xs text-muted">Quando</dt><dd className="mt-1 text-sm">{new Date(e.starts_at).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" })} ate {new Date(e.ends_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</dd></Card>
@@ -62,7 +67,8 @@ export default async function EventoPage({
         <Card><dt className="text-xs text-muted">Inscricao</dt><dd className="mt-1 text-sm">{e.require_approval ? "Sujeita a aprovacao do organizador" : "Confirmacao automatica"}</dd></Card>
       </dl>
       {e.description && <p className="mt-6 whitespace-pre-line leading-relaxed text-fg/85">{e.description}</p>}
-      {user?.id === e.owner_id && (
+      {user?.id === e.owner_id && !cancelledEvent && Number(e.history) > 0 && <CancelEvent eventId={e.id} returnTo={ret} className="mt-8" />}
+      {user?.id === e.owner_id && !cancelledEvent && Number(e.history) === 0 && (
         <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: ret }} label="Excluir evento" className="mt-8">
           O evento e as inscricoes serao apagados. As pessoas inscritas recebem um aviso de cancelamento.
         </DeleteConfirm>
@@ -72,6 +78,8 @@ export default async function EventoPage({
           <Link href="/login" className={btnCls}>Entre para se inscrever</Link>
         ) : e.owner_id === user.id ? (
           <p className="text-sm text-muted">Voce organiza este evento. Gerencie as inscricoes em Meus eventos.</p>
+        ) : cancelledEvent ? (
+          reg ? <Badge kind={reg.status} label={regLabel[reg.status] ?? reg.status} /> : null
         ) : registration ? (
           <>
             <Badge kind={registration} label={regLabel[registration] ?? registration} />

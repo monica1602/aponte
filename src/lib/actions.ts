@@ -28,6 +28,7 @@ import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
+import { eventHasHistory } from "./event-history";
 import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
 } from "./my-data";
@@ -728,12 +729,26 @@ export async function deleteEvent(formData: FormData) {
   const id = Number(formData.get("event_id"));
   const ret = str(formData, "return").startsWith("/") ? str(formData, "return") : "/meus-eventos";
   const db = getDb();
-  const event = (await db.prepare("SELECT id, title FROM events WHERE id = ? AND owner_id = ?").get(id, user.id)) as { id: number; title: string } | undefined;
+  const event = (await db.prepare("SELECT id, title, status FROM events WHERE id = ? AND owner_id = ?").get(id, user.id)) as { id: number; title: string; status: string } | undefined;
   if (!event) back("/meus-eventos", "error", "Evento nao encontrado ou voce nao e quem o cadastrou.");
-  if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para excluir o evento.");
+  if (event.status === "cancelled") back(ret, "msg", `O evento "${event.title}" ja estava cancelado.`);
   const people = (await db.prepare(
     "SELECT user_id FROM event_registrations WHERE event_id = ? AND status IN ('requested','approved','waitlist')"
   ).all(id)) as unknown as { user_id: number }[];
+  if (await eventHasHistory(id)) {
+    if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para cancelar o evento.");
+    const done = await db.prepare("UPDATE events SET status = 'cancelled' WHERE id = ? AND status <> 'cancelled'").run(id);
+    if (!done.changes) back(ret, "msg", `O evento "${event.title}" ja estava cancelado.`);
+    const text = `O evento "${event.title}" foi cancelado pela organizacao.`;
+    for (const p of people) {
+      await notify(p.user_id, text, `/eventos/${id}`);
+      await emailUser(p.user_id, `Evento cancelado: ${event.title}`, text, "Ver evento", `/eventos/${id}`, "network");
+    }
+    await audit(user.id, "event.cancelled", "event", id);
+    await alertAdmin(`Evento cancelado: "${event.title}" por ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
+    back(ret, "msg", `Evento "${event.title}" cancelado. O historico foi mantido.`);
+  }
+  if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para excluir o evento.");
   await db.prepare("DELETE FROM events WHERE id = ?").run(id);
   for (const p of people) await notify(p.user_id, `O evento "${event!.title}" foi cancelado e excluido pela organizacao.`, "/eventos");
   await audit(user.id, "event.delete", "event", id);
@@ -849,7 +864,7 @@ export async function cancelEventRegistration(formData: FormData) {
   const db = getDb();
   const reg = (await db.prepare(
     `SELECT r.id, r.status, r.checked_in_at, e.title, e.owner_id, e.starts_at FROM event_registrations r JOIN events e ON e.id = r.event_id
-     WHERE r.event_id = ? AND r.user_id = ?`
+     WHERE r.event_id = ? AND r.user_id = ? AND e.status = 'published'`
   ).get(eventId, user.id)) as { id: number; status: string; checked_in_at: string | null; title: string; owner_id: number; starts_at: string } | undefined;
   if (!reg || !["requested", "approved", "waitlist"].includes(reg.status)) back(ret, "error", "Voce nao tem uma inscricao ativa neste evento.");
   if (reg.checked_in_at) back(ret, "error", "Nao e possivel cancelar: sua presenca ja foi registrada.");
@@ -876,7 +891,7 @@ export async function reviewEventRegistration(formData: FormData) {
     .prepare(
       `SELECT r.id, r.event_id, e.capacity, e.title
        FROM event_registrations r JOIN events e ON e.id = r.event_id
-       WHERE r.id = ? AND e.owner_id = ?`
+       WHERE r.id = ? AND e.owner_id = ? AND e.status = 'published'`
     )
     .get(registrationId, user.id) as { id: number; event_id: number; capacity: number | null; title: string } | undefined;
   if (!registration || !["approve", "decline"].includes(decision)) {
@@ -904,7 +919,7 @@ export async function checkInEvent(formData: FormData) {
   const db = getDb();
   const row = await db.prepare(
     `SELECT r.id FROM event_registrations r JOIN events e ON e.id = r.event_id
-     WHERE r.id = ? AND r.status = 'approved' AND e.owner_id = ?`
+     WHERE r.id = ? AND r.status = 'approved' AND e.owner_id = ? AND e.status = 'published'`
   ).get(registrationId, user.id);
   if (!row) back("/dashboard", "error", "Presenca nao encontrada.");
   await db.prepare("UPDATE event_registrations SET checked_in_at = COALESCE(checked_in_at, datetime('now')) WHERE id = ?")
@@ -920,7 +935,7 @@ export async function selfCheckInEvent(formData: FormData) {
   const db = getDb();
   const row = (await db.prepare(
     `SELECT r.id, r.checked_in_at, e.title, e.owner_id, e.starts_at, e.ends_at FROM event_registrations r JOIN events e ON e.id = r.event_id
-     WHERE r.id = ? AND r.user_id = ? AND r.status = 'approved'`
+     WHERE r.id = ? AND r.user_id = ? AND r.status = 'approved' AND e.status = 'published'`
   ).get(registrationId, user.id)) as { id: number; checked_in_at: string | null; title: string; owner_id: number; starts_at: string; ends_at: string } | undefined;
   if (!row) back(ret, "error", "Check-in indisponivel: ele so vale para a sua inscricao confirmada.");
   if (row.checked_in_at) back(ret, "msg", "Seu check-in ja estava registrado.");
@@ -1011,8 +1026,9 @@ export async function issueCertificate(formData: FormData) {
   const recipientId = Number(formData.get("recipient_id"));
   const eventId = Number(formData.get("event_id"));
   const db = getDb();
-  const event = await db.prepare("SELECT id, title, ends_at FROM events WHERE id = ? AND owner_id = ?")
-    .get(eventId, user.id) as { id: number; title: string; ends_at: string } | undefined;
+  const event = await db.prepare("SELECT id, title, ends_at, status FROM events WHERE id = ? AND owner_id = ?")
+    .get(eventId, user.id) as { id: number; title: string; ends_at: string; status: string } | undefined;
+  if (event?.status === "cancelled") back("/dashboard", "error", EVENT_CANCELLED);
   const attended = await db.prepare(
     "SELECT id FROM event_registrations WHERE event_id = ? AND user_id = ? AND checked_in_at IS NOT NULL"
   ).get(eventId, recipientId);
@@ -1031,19 +1047,21 @@ export async function issueCertificate(formData: FormData) {
 }
 
 const CERTIFICATE_EXPIRED = "O prazo para emitir o certificado terminou 1 ano apos o fim do evento.";
+const EVENT_CANCELLED = "O evento foi cancelado: nao e possivel emitir certificado novo.";
 
 export async function selfIssueCertificate(formData: FormData) {
   const user = await me();
   requireVerified(user, "/dashboard");
   const db = getDb();
   const reg = (await db.prepare(
-    `SELECT r.event_id, e.title, e.ends_at FROM event_registrations r JOIN events e ON e.id = r.event_id
+    `SELECT r.event_id, e.title, e.ends_at, e.status FROM event_registrations r JOIN events e ON e.id = r.event_id
      WHERE r.id = ? AND r.user_id = ? AND r.checked_in_at IS NOT NULL`
-  ).get(Number(formData.get("registration_id")), user.id)) as { event_id: number; title: string; ends_at: string } | undefined;
+  ).get(Number(formData.get("registration_id")), user.id)) as { event_id: number; title: string; ends_at: string; status: string } | undefined;
   if (!reg) back("/dashboard", "error", "Certificados so podem ser emitidos por quem fez check-in no evento.");
   const existing = (await db.prepare("SELECT verification_code FROM certificates WHERE user_id = ? AND event_id = ?")
     .get(user.id, reg!.event_id)) as { verification_code: string } | undefined;
   if (existing) redirect(`/certificados/${existing.verification_code}`);
+  if (reg!.status === "cancelled") back("/dashboard", "error", EVENT_CANCELLED);
   if (!canIssueCertificate(reg!.ends_at)) back("/dashboard", "error", CERTIFICATE_EXPIRED);
   const code = crypto.randomBytes(9).toString("hex").toUpperCase();
   try {
