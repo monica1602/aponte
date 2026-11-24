@@ -381,6 +381,51 @@ npm run build
 Todos os comandos devem concluir sem erros. Em seguida, confirme que
 `http://localhost:3000/eventos` responde e apresenta a agenda de eventos.
 
+## Backup e restauracao do banco
+
+O workflow `.github/workflows/backup.yml` faz uma copia do banco PostgreSQL do site todo dia as 03:00 (Brasilia).
+
+- **Copia:** `pg_dump` completo (inclui os arquivos enviados, que ficam no banco) e a contagem de registros de cada tabela, tirados do mesmo instante. A copia so le o banco.
+- **Criptografia:** AES-256 com `gpg`, usando a senha do segredo `BACKUP_PASSPHRASE`. O repositorio e publico, entao a copia nunca e guardada sem criptografia.
+- **Guarda:** cada copia fica 30 dias em **Actions > Backup do banco > (execucao) > Artifacts**, com o nome `ponte-backup-AAAA-MM-DD-HHMM`.
+- **Teste de recuperacao:** as segundas-feiras e em toda execucao manual, a copia e restaurada num PostgreSQL vazio, as contagens de todas as tabelas sao comparadas com as do backup e o site e aberto com a copia restaurada. Nenhum dado aparece nos logs.
+- **Falhas:** o GitHub avisa por e-mail quando o backup ou o teste falha.
+
+### Segredos (Settings > Secrets and variables > Actions)
+
+| Segredo | Valor |
+|---|---|
+| `BACKUP_DATABASE_URL` | Endereco do banco do Neon (o mesmo `DATABASE_URL` do Vercel). O endereco com `-pooler` e trocado automaticamente pela conexao direta. |
+| `BACKUP_PASSPHRASE` | Senha longa criada por quem administra a plataforma. Guarde uma copia fora do GitHub: sem ela, nenhuma copia pode ser aberta. |
+
+Para rodar na hora: **Actions > Backup do banco > Run workflow**.
+
+### Como restaurar
+
+O banco atual nunca e sobrescrito: a copia vai para um banco novo e so depois o site passa a usa-lo.
+
+1. Baixe o artifact da data desejada e descompacte o `.zip`.
+2. Abra a copia com a senha:
+   ```bash
+   mkdir copia
+   gpg -d ponte-backup.tar.gpg | tar -C copia -xf -
+   ```
+3. No Neon, crie um banco novo (ou um branch novo) e copie o endereco dele.
+4. Restaure com o `pg_restore` da mesma versao principal do Neon:
+   ```bash
+   pg_restore --no-owner --no-acl --no-comments --exit-on-error --dbname "ENDERECO_DO_BANCO_NOVO" copia/ponte.dump
+   ```
+5. Confira as contagens:
+   ```bash
+   RESTORE_DATABASE_URL="ENDERECO_DO_BANCO_NOVO" node scripts/db-backup.mjs check copia/counts.json
+   ```
+6. No Vercel, troque `DATABASE_URL` pelo endereco do banco novo e faca um novo deploy.
+7. Apague a pasta `copia` e o arquivo baixado.
+
+### Trocar a senha da criptografia
+
+Atualize `BACKUP_PASSPHRASE`. As copias anteriores continuam abrindo so com a senha antiga ate vencerem (30 dias), entao guarde as duas durante esse periodo.
+
 ## Deploy (Docker — Railway, Render, Fly.io, VPS)
 
 ```bash

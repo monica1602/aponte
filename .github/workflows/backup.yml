@@ -1,0 +1,139 @@
+name: Backup do banco
+
+# Copia diaria do banco do site (Neon), criptografada, guardada por 30 dias.
+# As segundas-feiras (e nas execucoes manuais), a copia e restaurada num banco vazio para conferir a recuperacao.
+on:
+  schedule:
+    - cron: "0 6 * * *" # todo dia as 03:00 de Brasilia
+  workflow_dispatch:
+    inputs:
+      testar_recuperacao:
+        description: Testar a recuperacao depois do backup
+        type: boolean
+        default: true
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    outputs:
+      pg_major: ${{ steps.versao.outputs.major }}
+      artefato: ${{ steps.nome.outputs.artefato }}
+      testar: ${{ steps.nome.outputs.testar }}
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: Conferir os segredos
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ] || [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::Crie os segredos BACKUP_DATABASE_URL e BACKUP_PASSPHRASE em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Versao do banco
+        id: versao
+        run: echo "major=$(node scripts/db-backup.mjs version)" >> "$GITHUB_OUTPUT"
+      - name: Cliente PostgreSQL
+        run: bash scripts/pg-client.sh "${{ steps.versao.outputs.major }}"
+      - name: Copia do banco
+        run: node scripts/db-backup.mjs dump "$RUNNER_TEMP/copia"
+      - name: Criptografia
+        run: |
+          mkdir -p "$RUNNER_TEMP/backup"
+          tar -C "$RUNNER_TEMP/copia" -cf - . | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
+            --symmetric --cipher-algo AES256 -o "$RUNNER_TEMP/backup/ponte-backup.tar.gpg" 3<<<"$BACKUP_PASSPHRASE"
+          rm -rf "$RUNNER_TEMP/copia"
+          file "$RUNNER_TEMP/backup/ponte-backup.tar.gpg" | grep -q "GPG symmetrically encrypted data (AES256"
+          ls -l "$RUNNER_TEMP/backup"
+      - name: Nome da copia
+        id: nome
+        run: |
+          echo "artefato=ponte-backup-$(date -u +%Y-%m-%d-%H%M)" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "testar=${{ inputs.testar_recuperacao }}" >> "$GITHUB_OUTPUT"
+          elif [ "$(date -u +%u)" = "1" ]; then
+            echo "testar=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "testar=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.nome.outputs.artefato }}
+          path: ${{ runner.temp }}/backup/ponte-backup.tar.gpg
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
+
+  recuperacao:
+    needs: backup
+    if: needs.backup.outputs.testar == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:${{ needs.backup.outputs.pg_major }}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ponte_restaurado
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      RESTORE_DATABASE_URL: postgres://postgres:postgres@localhost:5432/ponte_restaurado
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.backup.outputs.artefato }}
+          path: ${{ runner.temp }}/backup
+      - name: Cliente PostgreSQL
+        run: bash scripts/pg-client.sh "${{ needs.backup.outputs.pg_major }}"
+      - name: Abrir a copia com a senha
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/copia"
+          gpg --batch --pinentry-mode loopback --passphrase-fd 3 -d "$RUNNER_TEMP/backup/ponte-backup.tar.gpg" 3<<<"$BACKUP_PASSPHRASE" \
+            | tar -C "$RUNNER_TEMP/copia" -xf -
+      - name: Restaurar num banco vazio
+        run: pg_restore --no-owner --no-acl --no-comments --exit-on-error --dbname "$RESTORE_DATABASE_URL" "$RUNNER_TEMP/copia/ponte.dump"
+      - name: Conferir tabelas e registros
+        run: node scripts/db-backup.mjs check "$RUNNER_TEMP/copia/counts.json"
+      - run: npm run build
+      - name: Site abre com a copia restaurada
+        env:
+          DATABASE_URL: ${{ env.RESTORE_DATABASE_URL }}
+          PORT: "3000"
+          BASE_URL: http://localhost:3000
+          SEED_DEMO: "0"
+        run: |
+          npm start > "$RUNNER_TEMP/site.log" 2>&1 &
+          for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:3000/login && break; sleep 1; done
+          for p in / /login /eventos /projetos /mentores /oportunidades /privacidade; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:3000$p")
+            echo "$code $p"
+            [ "$code" = "200" ] || { tail -30 "$RUNNER_TEMP/site.log"; exit 1; }
+          done
+      - name: Apagar a copia aberta
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/copia"

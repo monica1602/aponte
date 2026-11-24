@@ -36,12 +36,12 @@ test("conta sem aceite fica pendente ate gravar a versao em vigor", async () => 
 });
 
 test("versao nova pede novo aceite so do documento que mudou", () => {
-  assert.deepEqual(versions.docsBehind({ terms: 1, privacy: 2, conduct: 1 }), []);
+  assert.deepEqual(versions.docsBehind({ terms: 1, privacy: 3, conduct: 1 }), []);
   assert.deepEqual(versions.docsBehind({ terms: 1, conduct: 1 }), ["privacy"]);
   versions.LEGAL_VERSIONS.terms.push({ version: 2, effectiveFrom: "2027-01-01", summary: "teste" });
   try {
-    assert.deepEqual(versions.docsBehind({ terms: 1, privacy: 2, conduct: 1 }), ["terms"]);
-    assert.deepEqual(versions.docsBehind({ terms: 2, privacy: 2, conduct: 1 }), []);
+    assert.deepEqual(versions.docsBehind({ terms: 1, privacy: 3, conduct: 1 }), ["terms"]);
+    assert.deepEqual(versions.docsBehind({ terms: 2, privacy: 3, conduct: 1 }), []);
   } finally {
     versions.LEGAL_VERSIONS.terms.pop();
   }

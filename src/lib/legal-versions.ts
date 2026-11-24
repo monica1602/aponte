@@ -7,6 +7,7 @@ export const LEGAL_VERSIONS: Record<LegalDoc, LegalVersion[]> = {
   privacy: [
     { version: 1, effectiveFrom: "2026-11-23", summary: "Texto em vigor quando o versionamento comecou." },
     { version: 2, effectiveFrom: "2026-11-23", summary: "Inclui a secao Prazos de guarda: auditoria, inscricoes, presenca, confirmacao de chegada e certificados." },
+    { version: 3, effectiveFrom: "2026-11-24", summary: "Inclui nos Prazos de guarda as copias de seguranca do banco de dados: 30 dias." },
   ],
   conduct: [{ version: 1, effectiveFrom: "2026-11-23", summary: "Texto em vigor quando o versionamento comecou." }],
 };
