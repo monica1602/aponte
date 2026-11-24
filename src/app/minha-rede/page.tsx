@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
-import { respondMentorInvite } from "@/lib/actions";
+import { completeMentorship, respondMentorInvite } from "@/lib/actions";
 import { listMeetings } from "@/lib/meetings";
 import { PersonMeetings } from "@/components/meeting-item";
 import { Badge, Card, Empty, Flash, PageHeader, ROLE_LABELS, btnCls, btnSecondaryCls } from "@/components/ui";
@@ -39,7 +39,7 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
   const meetings = await listMeetings(user.id);
   const reviewable = new Set(((await db.prepare(
     `SELECT DISTINCT m.id FROM mentorships m JOIN mentorship_meetings mm ON mm.mentorship_id = m.id
-     WHERE (m.mentor_id = ? OR m.mentee_id = ?) AND m.status = 'active' AND mm.status = 'completed'`
+     WHERE (m.mentor_id = ? OR m.mentee_id = ?) AND m.status IN ('active','completed') AND mm.status = 'completed'`
   ).all(user.id, user.id)) as { id: number }[]).map((r) => Number(r.id)));
   const ret = `/minha-rede?aba=${tab}`;
   const tabs = [
@@ -78,7 +78,7 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
                     <Link href={`/pessoas/${p.id}`} className="font-semibold text-accent hover:underline">{p.name}</Link>
                     <p className="text-xs text-muted">{ROLE_LABELS[p.role]}{p.status === "active" ? ` · ${p.email}` : ""}</p>
                   </div>
-                  <Badge kind={p.status} label={p.status === "active" ? "Ativa" : p.requested_by === "company" ? "Convite enviado" : p.requested_by === "mentor" ? (tab === "mentores" ? "Convite recebido" : "Convite enviado") : "Pendente"} />
+                  <Badge kind={p.status === "completed" ? "active" : p.status} label={p.status === "active" ? "Ativa" : p.status === "completed" ? "Concluida" : p.requested_by === "company" ? "Convite enviado" : p.requested_by === "mentor" ? (tab === "mentores" ? "Convite recebido" : "Convite enviado") : "Pendente"} />
                 </div>
                 {p.headline && <p className="mt-2 text-sm text-muted">{p.headline}</p>}
                 {p.objective && <p className="mt-2 text-xs text-muted">Objetivo: {p.objective}</p>}
@@ -90,6 +90,13 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
                   </div>
                 )}
                 {p.kind === "mentorship" && reviewable.has(Number(p.mid)) && <Link href={`/avaliar?mentoria=${p.mid}`} className="mt-2 inline-block text-xs text-accent hover:underline">Avaliar mentoria</Link>}
+                {p.kind === "mentorship" && p.status === "active" && reviewable.has(Number(p.mid)) && (
+                  <form action={completeMentorship} className="mt-2">
+                    <input type="hidden" name="id" value={p.mid} />
+                    <input type="hidden" name="return" value={ret} />
+                    <button className="text-xs text-accent hover:underline">Concluir mentoria</button>
+                  </form>
+                )}
                 {p.status === "active" && <PersonMeetings meetings={meetings} kind={p.kind} linkId={p.mid} userId={user.id} returnTo={ret} />}
               </Card>
             </li>

@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS mentorships (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   mentor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   mentee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','active','completed')),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(mentor_id, mentee_id)
 );
@@ -722,9 +722,37 @@ async function ensureMigrations(db: Db) {
     objective: "TEXT NOT NULL DEFAULT ''",
     message: "TEXT NOT NULL DEFAULT ''",
     requested_by: "TEXT NOT NULL DEFAULT 'mentee'",
+    completed_at: "TEXT",
+    completed_by: "INTEGER",
   });
   await keepCertificatesWithoutIssuer(db);
   await allowAttachmentReports(db);
+  await allowCompletedMentorships(db);
+}
+
+/** Mentoria concluida: amplia a regra da situacao, mantendo todas as mentorias existentes. */
+async function allowCompletedMentorships(db: Db) {
+  if (db.dialect === "postgres") {
+    const c = (await db.prepare(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'mentorships'::regclass AND conname = 'mentorships_status_check'"
+    ).get()) as { def: string } | undefined;
+    if (!c || c.def.includes("completed")) return;
+    await db.exec(`ALTER TABLE mentorships DROP CONSTRAINT mentorships_status_check;
+      ALTER TABLE mentorships ADD CONSTRAINT mentorships_status_check CHECK (status IN ('pending','active','completed'));`);
+    return;
+  }
+  const t = (await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mentorships'").get()) as { sql: string } | undefined;
+  const oldCheck = "CHECK(status IN ('pending','active'))";
+  if (!t || t.sql.includes("'completed'") || !t.sql.includes(oldCheck)) return;
+  const indexes = (await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mentorships' AND sql IS NOT NULL").all()) as { sql: string }[];
+  const created = t.sql.replace(oldCheck, "CHECK(status IN ('pending','active','completed'))").replace(/^CREATE TABLE "?mentorships"?/, "CREATE TABLE mentorships_new");
+  await db.exec(`BEGIN;
+    ${created};
+    INSERT INTO mentorships_new SELECT * FROM mentorships;
+    DROP TABLE mentorships;
+    ALTER TABLE mentorships_new RENAME TO mentorships;
+    ${indexes.map((i) => `${i.sql};`).join("\n")}
+    COMMIT;`);
 }
 
 /** Denuncias de arquivo: amplia a regra do tipo de alvo, mantendo todas as denuncias existentes. */
@@ -844,6 +872,7 @@ async function addColumns(db: Db, table: string, cols: Record<string, string>) {
 }
 
 export type Profile = {
+  show_impact?: boolean;
   tools?: string[];
   toolsOther?: string;
   learnTools?: string[];

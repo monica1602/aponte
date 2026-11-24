@@ -58,7 +58,7 @@ export async function listPeople(role?: Role): Promise<PersonRow[]> {
   const projById = new Map(projects.map((p) => [p.id, p]));
   const ref = (id: number, extra?: string): Ref => ({ id, name: byId.get(id)?.name ?? "?", role: byId.get(id)?.role, extra });
   const pref = (p: P, extra?: string): Ref => ({ id: p.id, name: p.title, extra });
-  const st = (s: string) => (s === "active" || s === "accepted" ? "ativa" : "pendente");
+  const st = (s: string) => (s === "active" || s === "accepted" ? "ativa" : s === "completed" ? "concluida" : "pendente");
 
   return users
     .filter((u) => !role || u.role === role)

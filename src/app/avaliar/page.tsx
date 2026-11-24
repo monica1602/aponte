@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
-import { removeMentorship, submitReview } from "@/lib/actions";
+import { completeMentorship, removeMentorship, submitReview } from "@/lib/actions";
 import { REVIEW_COMMENT_MAX, eventReviewTarget, mentorshipReviewTarget, myReview } from "@/lib/reviews";
 import { Card, Empty, Flash, PageHeader, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
 
@@ -42,6 +42,14 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
         <Empty>{isEvent ? "A avaliacao e so para quem fez check-in no evento, ate 30 dias depois do fim." : "Esta mentoria ainda nao pode ser avaliada. A avaliacao abre depois do primeiro encontro concluido."}</Empty>
       ) : (
         <Card>
+          {ending && (
+            <form action={completeMentorship} className="mb-4 rounded-md border border-accent/30 bg-accent/5 px-3 py-2 text-sm">
+              <input type="hidden" name="id" value={targetId} />
+              <input type="hidden" name="return" value="/minha-rede" />
+              <p>A mentoria chegou ao fim? Voce pode conclui-la em vez de remover: o historico fica guardado e conta no impacto de voces.</p>
+              <button className={`${btnSecondaryCls} mt-2`}>Concluir mentoria</button>
+            </form>
+          )}
           {ending && <p className="mb-4 rounded-md border border-accent/30 bg-accent/5 px-3 py-2 text-sm">Antes de remover a conexao, quer avaliar a mentoria? Voce tambem pode remover sem avaliar.</p>}
           {current && <p className="mb-4 text-xs text-muted">Voce ja avaliou. Ao salvar, a avaliacao anterior e substituida.</p>}
           <form action={submitReview} className="space-y-4">

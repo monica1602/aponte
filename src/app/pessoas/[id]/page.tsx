@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canSeeEmail, getDb, getUser } from "@/lib/db";
+import { canSeeEmail, getDb, getProfile, getUser } from "@/lib/db";
+import { personalImpact } from "@/lib/impact";
+import { ImpactGrid } from "@/components/impact";
 import { getSessionUser } from "@/lib/auth";
 import { blockUser, inviteToCompany, requestMentorship, sendMessage, toggleEndorsement } from "@/lib/actions";
 import { blockedBetween, hasBlocked } from "@/lib/moderation";
@@ -40,6 +42,7 @@ export default async function PessoaPage({
   const db = getDb();
   const ret = `/pessoas/${profile.id}`;
   const showEmail = await canSeeEmail(viewer?.id ?? null, profile);
+  const impact = (await getProfile(profile.id)).show_impact ? await personalImpact(profile.id, profile.role) : null;
   const resume = await listAttachments({ scope: "resume", ownerId: profile.id });
   const showResume = resume.length > 0 && (viewer?.id === profile.id || (await canSeeResume(viewer?.id ?? null, profile)));
   const files = await listAttachments({ scope: "profile", ownerId: profile.id });
@@ -189,6 +192,13 @@ export default async function PessoaPage({
           </div>
         )}
       </Card>
+
+      {impact && (
+        <Card>
+          <h2 className="font-semibold">Impacto na Ponte</h2>
+          <ImpactGrid items={impact} />
+        </Card>
+      )}
 
       {(files.length > 0 || resume.length > 0) && (
         <Card>

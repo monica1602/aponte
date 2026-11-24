@@ -25,7 +25,7 @@ export async function mentorshipReviewTarget(userId: number, mentorshipId: numbe
   const row = (await getDb().prepare(
     `SELECT m.id, m.mentor_id, m.mentee_id, u.name AS other_name FROM mentorships m
      JOIN users u ON u.id = CASE WHEN m.mentor_id = ? THEN m.mentee_id ELSE m.mentor_id END
-     WHERE m.id = ? AND m.status = 'active' AND (m.mentor_id = ? OR m.mentee_id = ?)
+     WHERE m.id = ? AND m.status IN ('active','completed') AND (m.mentor_id = ? OR m.mentee_id = ?)
        AND EXISTS (SELECT 1 FROM mentorship_meetings mm WHERE mm.mentorship_id = m.id AND mm.status = 'completed')`
   ).get(userId, mentorshipId, userId, userId)) as { id: number; mentor_id: number; mentee_id: number; other_name: string } | undefined;
   if (!row) return null;

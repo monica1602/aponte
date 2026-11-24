@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { TASK_STATUS, brDay, myOpenTasks } from "@/lib/project-tasks";
+import { personalImpact } from "@/lib/impact";
+import { ImpactGrid } from "@/components/impact";
+import { getProfile } from "@/lib/db";
 import { eventReviewOpen, mentorSummary } from "@/lib/reviews";
 import { PASSWORD_HINT } from "@/lib/password-policy";
 import { EVENT_CATEGORIES } from "@/lib/catalog";
@@ -19,6 +22,8 @@ import {
   updateProfile,
   respondMentorship,
   removeMentorship,
+  completeMentorship,
+  setImpactVisibility,
   addContribution,
   deleteContribution,
   addOpportunity,
@@ -324,6 +329,13 @@ function NetworkList({ rows, title, empty }: { rows: LinkRow[]; title: string; e
               </div>
               <div className="flex shrink-0 items-center gap-3">
                 {Number(r.can_review) > 0 && <Link href={`/avaliar?mentoria=${r.mentorship_id}`} className="text-xs text-accent hover:underline">avaliar mentoria</Link>}
+                {Number(r.can_review) > 0 && (
+                  <form action={completeMentorship}>
+                    <input type="hidden" name="id" value={r.mentorship_id} />
+                    <input type="hidden" name="return" value="/dashboard" />
+                    <button className="text-xs text-accent hover:underline">concluir mentoria</button>
+                  </form>
+                )}
                 <form action={removeMentorship}>
                   <input type="hidden" name="id" value={r.mentorship_id} />
                   <button className="text-xs text-muted/60 hover:text-red-400">desconectar</button>
@@ -402,6 +414,8 @@ export default async function DashboardPage({
   const network = links.filter((l) => l.status === "active");
   const meetings = await listMeetings(user.id);
   const myTasks = await myOpenTasks(user.id);
+  const impact = await personalImpact(user.id, user.role);
+  const showImpact = !!(await getProfile(user.id)).show_impact;
   const reviewSummary = isMentorSide ? await mentorSummary(user.id) : null;
 
   const myContribs =
@@ -436,6 +450,16 @@ export default async function DashboardPage({
           </ul>
         </Card>
       )}
+
+      <Card>
+        <h2 className="font-semibold">Meu impacto</h2>
+        <p className="mt-1 text-xs text-muted">So voce ve estes numeros, a menos que escolha mostra-los no seu perfil publico.</p>
+        <ImpactGrid items={impact} />
+        <form action={setImpactVisibility} className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+          <label className="flex items-center gap-2"><input type="checkbox" name="show_impact" value="1" defaultChecked={showImpact} />Mostrar meu impacto no perfil publico</label>
+          <button className="text-xs text-accent hover:underline">Salvar</button>
+        </form>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">

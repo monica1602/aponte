@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { cookies, headers } from "next/headers";
 import crypto from "node:crypto";
-import { audit, getDb, hashPassword, notify, verifyPassword, type User } from "./db";
+import { audit, getDb, getProfile, hashPassword, notify, saveProfile, verifyPassword, type User } from "./db";
 import {
   clearAdminPending,
   createAdminPending,
@@ -477,7 +477,10 @@ export async function requestMentorship(formData: FormData) {
   if (!mentor) back(ret, "error", "Mentor nao encontrado.");
   if (await blockedBetween(user.id, mentorId)) back(ret, "error", "Nao e possivel enviar este pedido para esta pessoa.");
   try {
-    await getDb()
+    const reopened = await getDb()
+      .prepare("UPDATE mentorships SET status = 'pending', requested_by = 'mentee', objective = ?, message = ? WHERE mentor_id = ? AND mentee_id = ? AND status = 'completed'")
+      .run(str(formData, "objective").slice(0, 300), str(formData, "message").slice(0, 1000), mentorId, user.id);
+    if (!Number(reopened.changes)) await getDb()
       .prepare("INSERT INTO mentorships (mentor_id, mentee_id, objective, message) VALUES (?,?,?,?)")
       .run(mentorId, user.id, str(formData, "objective").slice(0, 300), str(formData, "message").slice(0, 1000));
   } catch {
@@ -525,7 +528,10 @@ export async function inviteMentee(formData: FormData) {
   if (!mentee) back(ret, "error", "Mentorado nao encontrado.");
   if (await blockedBetween(user.id, menteeId)) back(ret, "error", "Nao e possivel enviar este convite para esta pessoa.");
   try {
-    await getDb()
+    const reopened = await getDb()
+      .prepare("UPDATE mentorships SET status = 'pending', requested_by = 'mentor', objective = ?, message = ? WHERE mentor_id = ? AND mentee_id = ? AND status = 'completed'")
+      .run(str(formData, "objective").slice(0, 300), str(formData, "message").slice(0, 1000), user.id, menteeId);
+    if (!Number(reopened.changes)) await getDb()
       .prepare("INSERT INTO mentorships (mentor_id, mentee_id, objective, message, requested_by) VALUES (?,?,?,?, 'mentor')")
       .run(user.id, menteeId, str(formData, "objective").slice(0, 300), str(formData, "message").slice(0, 1000));
   } catch {
@@ -612,13 +618,46 @@ export async function respondCompanyInvite(formData: FormData) {
 export async function removeMentorship(formData: FormData) {
   const user = await me();
   const id = Number(formData.get("id"));
-  if (!formData.get("skip_review") && (await mentorshipReviewTarget(user.id, id)) && !(await myReview(user.id, "mentorship", id))) {
+  if (!formData.get("skip_review") && (await mentorshipReviewTarget(user.id, id))) {
     redirect(`/avaliar?mentoria=${id}&encerrar=1`);
   }
   await getDb()
     .prepare("DELETE FROM mentorships WHERE id = ? AND (mentor_id = ? OR mentee_id = ?)")
     .run(id, user.id, user.id);
   back("/dashboard", "msg", "Conexao removida.");
+}
+
+/** 2A: conclui a mentoria depois do 1o encontro concluido. Ela sai das ativas e o historico fica guardado. */
+export async function completeMentorship(formData: FormData) {
+  const user = await me();
+  const id = Number(formData.get("id")) || 0;
+  const ret = safeReturn(str(formData, "return"), "/minha-rede");
+  const db = getDb();
+  const m = (await db.prepare(
+    `SELECT id, mentor_id, mentee_id FROM mentorships WHERE id = ? AND status = 'active' AND (mentor_id = ? OR mentee_id = ?)
+     AND EXISTS (SELECT 1 FROM mentorship_meetings mm WHERE mm.mentorship_id = mentorships.id AND mm.status = 'completed')`
+  ).get(id, user.id, user.id)) as { id: number; mentor_id: number; mentee_id: number } | undefined;
+  if (!m) back(ret, "error", "A mentoria pode ser concluida depois do primeiro encontro concluido.");
+  await db.prepare("UPDATE mentorships SET status = 'completed', completed_at = datetime('now'), completed_by = ? WHERE id = ?").run(user.id, id);
+  await db.prepare("UPDATE mentorship_meetings SET status = 'cancelled' WHERE mentorship_id = ? AND status = 'scheduled'").run(id);
+  const other = m!.mentor_id === user.id ? m!.mentee_id : m!.mentor_id;
+  const text = `${user.name} concluiu a mentoria de voces. O historico fica guardado e conta no impacto de voces na Ponte.`;
+  await notify(other, text, "/minha-rede");
+  await emailUser(other, "Mentoria concluida", text, "Ver minha rede", "/minha-rede", "network");
+  await audit(user.id, "mentorship.completed", "mentorship", id);
+  if (!(await myReview(user.id, "mentorship", id))) {
+    redirect(`/avaliar?mentoria=${id}&msg=${encodeURIComponent("Mentoria concluida. Quer avaliar a mentoria?")}`);
+  }
+  back(ret, "msg", "Mentoria concluida. O historico fica guardado.");
+}
+
+/** 1C: a pessoa escolhe mostrar os proprios indicadores no perfil publico. */
+export async function setImpactVisibility(formData: FormData) {
+  const user = await me();
+  const show = formData.get("show_impact") === "1";
+  await saveProfile(user.id, { ...(await getProfile(user.id)), show_impact: show });
+  await audit(user.id, show ? "profile.impact_shown" : "profile.impact_hidden", "user", user.id);
+  back("/dashboard", "msg", show ? "Seu impacto aparece no seu perfil publico." : "Seu impacto deixou de aparecer no perfil publico.");
 }
 
 export async function addContribution(formData: FormData) {
