@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { DeleteConfirm } from "@/components/delete-confirm";
+import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
 import { deleteEvent, reviewEventRegistration } from "@/lib/actions";
 import { Badge, Card, Empty, Flash, PageHeader, btnSecondaryCls } from "@/components/ui";
 
@@ -35,8 +36,8 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
   ).all(user.id)) as unknown as Reg[];
   const mine = user.role === "mentee"
     ? ((await db.prepare(
-        `SELECT e.id, e.title, e.starts_at, r.status FROM event_registrations r JOIN events e ON e.id = r.event_id WHERE r.user_id = ? ORDER BY e.starts_at DESC`
-      ).all(user.id)) as unknown as { id: number; title: string; starts_at: string; status: string }[])
+        `SELECT e.id, e.title, e.starts_at, r.status, r.checked_in_at FROM event_registrations r JOIN events e ON e.id = r.event_id WHERE r.user_id = ? ORDER BY e.starts_at DESC`
+      ).all(user.id)) as unknown as { id: number; title: string; starts_at: string; status: string; checked_in_at: string | null }[])
     : [];
   return (
     <div className="pb-10">
@@ -49,9 +50,12 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
         mine.length === 0 ? <Empty>Voce ainda nao se inscreveu em eventos. <Link href="/eventos" className="text-accent underline">Ver eventos</Link></Empty> : (
           <ul className="space-y-2">
             {mine.map((e) => (
-              <li key={e.id}><Card className="flex items-center justify-between gap-3 py-3">
-                <Link href={`/eventos/${e.id}`} className="text-accent hover:underline">{e.title}</Link>
-                <Badge kind={e.status} label={STATUS[e.status] ?? e.status} />
+              <li key={e.id}><Card className="py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Link href={`/eventos/${e.id}`} className="text-accent hover:underline">{e.title}</Link>
+                  <Badge kind={e.status} label={STATUS[e.status] ?? e.status} />
+                </div>
+                {canCancelRegistration(e) && <CancelRegistration eventId={e.id} returnTo="/meus-eventos" label="Cancelar inscricao" className="mt-3" />}
               </Card></li>
             ))}
           </ul>

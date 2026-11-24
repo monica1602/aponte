@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { SafeHomeButton } from "@/components/safe-home-button";
+import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
 import { CheckInButton } from "@/components/check-in-button";
 import { checkInWindow, spTime } from "@/lib/event-time";
 import { canIssueCertificate, safeHomeOpen } from "@/lib/retention";
@@ -181,7 +182,7 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
               {r.checked_in_at && canIssueCertificate(r.ends_at) && <form action={issueCertificate}><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="recipient_id" value={r.participant_id} /><button className="text-accent hover:underline">emitir certificado</button></form>}
             </div></li>)}</ul>}
           </li>;
-        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p><SelfCheckIn r={r} />{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && safeHomeOpen(r.ends_at) && <SafeHomeButton action={confirmSafeHome} registrationId={r.id} />}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada {safeHomeTime(r.safe_home_at)}</p>}<MyCertificate r={r} /></li>)}</ul>
+        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p><SelfCheckIn r={r} />{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && safeHomeOpen(r.ends_at) && <SafeHomeButton action={confirmSafeHome} registrationId={r.id} />}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada {safeHomeTime(r.safe_home_at)}</p>}<MyCertificate r={r} />{canCancelRegistration(r) && <CancelRegistration eventId={r.event_id} returnTo="/dashboard" label="Cancelar inscricao" className="mt-3" />}</li>)}</ul>
       )}
     </Card>
   );

@@ -844,7 +844,8 @@ async function fillFromWaitlist(eventId: number, title: string, ownerId: number,
 export async function cancelEventRegistration(formData: FormData) {
   const user = await me();
   const eventId = Number(formData.get("event_id"));
-  const ret = `/eventos/${eventId}`;
+  const back_to = str(formData, "return");
+  const ret = ["/meus-eventos", "/dashboard"].includes(back_to) ? back_to : `/eventos/${eventId}`;
   const db = getDb();
   const reg = (await db.prepare(
     `SELECT r.id, r.status, r.checked_in_at, e.title, e.owner_id, e.starts_at FROM event_registrations r JOIN events e ON e.id = r.event_id
