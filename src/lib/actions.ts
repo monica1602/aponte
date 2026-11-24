@@ -27,6 +27,7 @@ import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
 import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
+import { promoteWaitlist } from "./waitlist";
 import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
 } from "./my-data";
@@ -812,11 +813,11 @@ export async function reviewEventRegistration(formData: FormData) {
   const db = getDb();
   const registration = await db
     .prepare(
-      `SELECT r.id, r.event_id, e.capacity
+      `SELECT r.id, r.event_id, e.capacity, e.title
        FROM event_registrations r JOIN events e ON e.id = r.event_id
        WHERE r.id = ? AND e.owner_id = ?`
     )
-    .get(registrationId, user.id) as { id: number; event_id: number; capacity: number | null } | undefined;
+    .get(registrationId, user.id) as { id: number; event_id: number; capacity: number | null; title: string } | undefined;
   if (!registration || !["approve", "decline"].includes(decision)) {
     back("/dashboard", "error", "Inscricao nao encontrada.");
   }
@@ -828,7 +829,20 @@ export async function reviewEventRegistration(formData: FormData) {
   await db.prepare("UPDATE event_registrations SET status = ? WHERE id = ?")
     .run(decision === "approve" ? "approved" : "declined", registrationId);
   await audit(user.id, `event.registration_${decision}d`, "event_registration", registrationId);
-  back("/dashboard", "msg", decision === "approve" ? "Inscricao aprovada." : "Inscricao recusada.");
+  if (decision === "approve") back("/dashboard", "msg", "Inscricao aprovada.");
+  const promoted = await promoteWaitlist(registration!.event_id, user.id);
+  const title = registration!.title;
+  for (const p of promoted) {
+    const text = p.status === "approved"
+      ? `Abriu uma vaga no evento "${title}" e sua inscricao saiu da lista de espera: ela esta confirmada.`
+      : `Abriu uma vaga no evento "${title}" e sua inscricao saiu da lista de espera: agora ela aguarda a aprovacao da organizacao.`;
+    await notify(p.userId, text, `/eventos/${registration!.event_id}`);
+    await emailUser(p.userId, `Abriu uma vaga no evento ${title}`, text, "Ver evento", `/eventos/${registration!.event_id}`, "network");
+    await notify(user.id, `${p.name} saiu da lista de espera do evento "${title}" e ${p.status === "approved" ? "esta confirmada" : "aguarda sua aprovacao"}.`, "/dashboard");
+  }
+  back("/dashboard", "msg", promoted.length
+    ? `Inscricao recusada. ${promoted.map((p) => p.name).join(", ")} saiu da lista de espera e ocupou a vaga.`
+    : "Inscricao recusada.");
 }
 
 export async function checkInEvent(formData: FormData) {
