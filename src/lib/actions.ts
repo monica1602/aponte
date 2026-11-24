@@ -810,6 +810,7 @@ export async function reviewEventRegistration(formData: FormData) {
   if (!isEventOwner(user)) redirect("/dashboard");
   const registrationId = Number(formData.get("registration_id"));
   const decision = str(formData, "decision");
+  const ret = str(formData, "return") === "/meus-eventos" ? "/meus-eventos" : "/dashboard";
   const db = getDb();
   const registration = await db
     .prepare(
@@ -819,17 +820,17 @@ export async function reviewEventRegistration(formData: FormData) {
     )
     .get(registrationId, user.id) as { id: number; event_id: number; capacity: number | null; title: string } | undefined;
   if (!registration || !["approve", "decline"].includes(decision)) {
-    back("/dashboard", "error", "Inscricao nao encontrada.");
+    back(ret, "error", "Inscricao nao encontrada.");
   }
   if (decision === "approve" && registration!.capacity !== null) {
     const used = await db.prepare("SELECT COUNT(*) AS count FROM event_registrations WHERE event_id = ? AND status = 'approved'")
       .get(registration!.event_id) as { count: number };
-    if (used.count >= registration!.capacity) back("/dashboard", "error", "O evento ja atingiu a capacidade.");
+    if (used.count >= registration!.capacity) back(ret, "error", "O evento ja atingiu a capacidade.");
   }
   await db.prepare("UPDATE event_registrations SET status = ? WHERE id = ?")
     .run(decision === "approve" ? "approved" : "declined", registrationId);
   await audit(user.id, `event.registration_${decision}d`, "event_registration", registrationId);
-  if (decision === "approve") back("/dashboard", "msg", "Inscricao aprovada.");
+  if (decision === "approve") back(ret, "msg", "Inscricao aprovada.");
   const promoted = await promoteWaitlist(registration!.event_id, user.id);
   const title = registration!.title;
   for (const p of promoted) {
@@ -840,7 +841,7 @@ export async function reviewEventRegistration(formData: FormData) {
     await emailUser(p.userId, `Abriu uma vaga no evento ${title}`, text, "Ver evento", `/eventos/${registration!.event_id}`, "network");
     await notify(user.id, `${p.name} saiu da lista de espera do evento "${title}" e ${p.status === "approved" ? "esta confirmada" : "aguarda sua aprovacao"}.`, "/dashboard");
   }
-  back("/dashboard", "msg", promoted.length
+  back(ret, "msg", promoted.length
     ? `Inscricao recusada. ${promoted.map((p) => p.name).join(", ")} saiu da lista de espera e ocupou a vaga.`
     : "Inscricao recusada.");
 }
