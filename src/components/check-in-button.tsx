@@ -15,10 +15,11 @@ function Submit() {
 }
 
 /** Botao de confirmacao de chegada; mostra "Enviando..." enquanto a acao do servidor roda. */
-export function CheckInButton({ action, registrationId }: { action: (formData: FormData) => Promise<void>; registrationId: number }) {
+export function CheckInButton({ action, registrationId, returnTo }: { action: (formData: FormData) => Promise<void>; registrationId: number; returnTo?: string }) {
   return (
     <form action={action} data-no-keep className="mt-2">
       <input type="hidden" name="registration_id" value={registrationId} />
+      {returnTo && <input type="hidden" name="return" value={returnTo} />}
       <Submit />
       <p className="mt-1 text-xs text-muted">O organizador sera avisado da sua presenca.</p>
     </form>

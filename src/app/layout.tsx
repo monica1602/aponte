@@ -41,7 +41,8 @@ function accountNav(role: string) {
       { href: "/empresas", label: "Empresas" },
       { href: "/meus-projetos", label: "Projetos mentorados" },
       OPEN_SOURCE,
-      { href: "/meus-eventos", label: "Meus eventos" }];
+      { href: "/meus-eventos", label: "Meus eventos" },
+      { href: "/eventos-participantes", label: "Eventos participantes" }];
   if (role === "mentee")
     return [...base,
       { href: "/aprendizado", label: "Aprendizado" },
@@ -55,7 +56,8 @@ function accountNav(role: string) {
     { href: "/talentos", label: "Mentorados" },
     { href: "/meus-projetos", label: "Meus projetos" },
     OPEN_SOURCE,
-    { href: "/meus-eventos", label: "Meus eventos" }];
+    { href: "/meus-eventos", label: "Meus eventos" },
+    { href: "/eventos-participantes", label: "Eventos participantes" }];
 }
 
 export default async function RootLayout({

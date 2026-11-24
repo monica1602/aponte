@@ -4,11 +4,10 @@ import { EVENT_CATEGORIES } from "@/lib/catalog";
 import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { SafeHomeButton } from "@/components/safe-home-button";
+import { PresenceActions } from "@/components/presence-actions";
 import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
-import { CheckInButton } from "@/components/check-in-button";
-import { checkInWindow, checkOutOpen, spTime } from "@/lib/event-time";
-import { canIssueCertificate, safeHomeOpen } from "@/lib/retention";
+import { checkOutOpen } from "@/lib/event-time";
+import { canIssueCertificate } from "@/lib/retention";
 import {
   updateProfile,
   respondMentorship,
@@ -19,9 +18,6 @@ import {
   deleteOpportunity,
   checkInEvent,
   checkOutEvent,
-  selfCheckOutEvent,
-  confirmSafeHome,
-  selfCheckInEvent,
   createMentee,
   createEvent,
   issueCertificate,
@@ -152,23 +148,6 @@ function AvailabilityEditor({ rows }: { rows: AvailabilityRow[] }) {
   );
 }
 
-function SelfCheckIn({ r }: { r: RegistrationRow }) {
-  if (r.event_status === "cancelled") return <p className="mt-2 text-xs text-red-300">Evento cancelado pela organizacao.</p>;
-  if (r.status !== "approved") return null;
-  if (r.checked_in_at) return <p className="mt-2 text-xs text-cyan-300">✓ Check-in feito {safeHomeTime(r.checked_in_at)}</p>;
-  const win = checkInWindow(r.starts_at, r.ends_at);
-  if (win.state === "before") return <p className="mt-2 text-xs text-muted">O check-in abre em {spTime(win.opens)}.</p>;
-  if (win.state === "closed") return <p className="mt-2 text-xs text-muted">Check-in encerrado.</p>;
-  return <CheckInButton action={selfCheckInEvent} registrationId={r.id} />;
-}
-
-function SelfCheckOut({ r }: { r: RegistrationRow }) {
-  if (r.status !== "approved" || !r.checked_in_at || r.event_status === "cancelled") return null;
-  if (r.checked_out_at) return <p className="mt-2 text-xs text-cyan-300">✓ Check-out feito {safeHomeTime(r.checked_out_at)}</p>;
-  if (!checkOutOpen(r.ends_at)) return null;
-  return <form action={selfCheckOutEvent} className="mt-2"><input type="hidden" name="registration_id" value={r.id} /><button className="text-xs text-cyan-300 hover:underline">Fazer check-out</button></form>;
-}
-
 function MyCertificate({ r }: { r: RegistrationRow }) {
   if (r.certificate_code) return <p className="mt-2 flex gap-3 text-xs"><Link href={`/certificados/${r.certificate_code}`} className="text-accent hover:underline">Ver meu certificado →</Link><a href={`/certificados/${r.certificate_code}/pdf`} download className="text-accent hover:underline">Baixar PDF</a></p>;
   if (!r.checked_in_at || !canIssueCertificate(r.ends_at) || r.event_status === "cancelled") return null;
@@ -193,7 +172,7 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
               {r.checked_in_at && canIssueCertificate(r.ends_at) && <form action={issueCertificate}><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="recipient_id" value={r.participant_id} /><button className="text-accent hover:underline">emitir certificado</button></form>}
             </div>}</li>)}</ul>}
           </li>;
-        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p><SelfCheckIn r={r} /><SelfCheckOut r={r} />{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && safeHomeOpen(r.ends_at) && <SafeHomeButton action={confirmSafeHome} registrationId={r.id} />}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada {safeHomeTime(r.safe_home_at)}</p>}<MyCertificate r={r} />{canCancelRegistration(r) && <CancelRegistration eventId={r.event_id} returnTo="/dashboard" label="Cancelar inscricao" className="mt-3" />}</li>)}</ul>
+        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p>{r.event_status === "cancelled" && <p className="mt-2 text-xs text-red-300">Evento cancelado pela organizacao.</p>}<PresenceActions r={r} returnTo="/dashboard" /><MyCertificate r={r} />{canCancelRegistration(r) && <CancelRegistration eventId={r.event_id} returnTo="/dashboard" label="Cancelar inscricao" className="mt-3" />}</li>)}</ul>
       )}
     </Card>
   );
