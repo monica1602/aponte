@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PASSWORD_HINT } from "@/lib/password-policy";
 import { EVENT_CATEGORIES } from "@/lib/catalog";
+import { CERTIFICATE_THEMES, DEFAULT_CERTIFICATE_THEME } from "@/lib/certificate-themes";
 import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
@@ -121,6 +122,9 @@ function EventCreator() {
           <input name="city" placeholder="Cidade" aria-label="Cidade" className={inputCls} />
           <input name="state" placeholder="UF" aria-label="Estado (UF)" maxLength={2} className={inputCls} />
         </div>
+        <select name="certificate_theme" aria-label="Modelo do certificado" className={inputCls} defaultValue={DEFAULT_CERTIFICATE_THEME}>
+          {CERTIFICATE_THEMES.map((t) => <option key={t.id} value={t.id}>Certificado: {t.label}</option>)}
+        </select>
         <label className="flex items-center gap-2 text-xs text-muted"><input name="require_approval" type="checkbox" /> Aprovar inscricoes manualmente</label>
         <button className={btnSecondaryCls}>Publicar evento</button>
       </form>

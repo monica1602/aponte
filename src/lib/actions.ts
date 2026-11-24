@@ -29,6 +29,8 @@ import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
 import { eventHasHistory } from "./event-history";
+import { validCertificateTheme } from "./certificate-themes";
+import { workloadMinutes } from "./certificates";
 import { MEETING_COL, MEETING_TABLE, canConfirmMeeting, listMeetings, meetingPath, meetingStarted, meetingTime, parseMeetingRef, type Meeting, type MeetingKind } from "./meetings";
 import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
@@ -718,14 +720,14 @@ export async function createEvent(formData: FormData) {
 
   const result = await getDb()
     .prepare(
-      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer, certificate_theme)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       user.id, title, str(formData, "description"), modality, startsAt, endsAt,
       onlineUrl, location, capacity, formData.get("require_approval") === "on" ? 1 : 0,
       str(formData, "category"), str(formData, "city"), str(formData, "state").toUpperCase().slice(0, 2),
-      str(formData, "organizer") || user.name
+      str(formData, "organizer") || user.name, validCertificateTheme(str(formData, "certificate_theme"))
     );
   const eventId = Number(result.lastInsertRowid);
   await audit(user.id, "event.created", "event", eventId);
@@ -779,10 +781,10 @@ export async function updateEvent(formData: FormData) {
 
   await db.prepare(
     `UPDATE events SET title = ?, description = ?, modality = ?, starts_at = ?, ends_at = ?, online_url = ?, location = ?, capacity = ?,
-       require_approval = ?, category = ?, city = ?, state = ? WHERE id = ? AND owner_id = ?`
+       require_approval = ?, category = ?, city = ?, state = ?, certificate_theme = ? WHERE id = ? AND owner_id = ?`
   ).run(
     title, str(formData, "description"), modality, startsAt, endsAt, onlineUrl, location, capacity,
-    formData.get("require_approval") === "on" ? 1 : 0, str(formData, "category"), city, state, id, user.id
+    formData.get("require_approval") === "on" ? 1 : 0, str(formData, "category"), city, state, validCertificateTheme(str(formData, "certificate_theme")), id, user.id
   );
   await audit(user.id, "event.updated", "event", id);
 
@@ -1313,15 +1315,31 @@ export async function issueCertificate(formData: FormData) {
   if (!event || !attended) back("/dashboard", "error", "Certificados so podem ser emitidos para participantes presentes.");
   if (!canIssueCertificate(event!.ends_at)) back("/dashboard", "error", CERTIFICATE_EXPIRED);
   const code = crypto.randomBytes(9).toString("hex").toUpperCase();
+  const snap = await certificateSnapshot(eventId);
   try {
     const result = await db.prepare(
-      "INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code) VALUES (?,?,?,?,?)"
-    ).run(recipientId, eventId, user.id, event!.title, code);
+      `INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code, workload_minutes, organizer_name, responsible_name, theme)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(recipientId, eventId, user.id, event!.title, code, snap.workload, snap.organizer, snap.responsible, snap.theme);
     await audit(user.id, "certificate.issued", "certificate", Number(result.lastInsertRowid));
   } catch {
     back("/dashboard", "error", "Ja existe certificado para esta pessoa neste evento.");
   }
   redirect(`/certificados/${code}`);
+}
+
+/** Carga horaria, organizador, responsavel e modelo ficam gravados no certificado no momento da emissao. */
+async function certificateSnapshot(eventId: number) {
+  const e = (await getDb().prepare(
+    `SELECT e.starts_at, e.ends_at, e.organizer, e.certificate_theme, u.name AS owner_name
+     FROM events e JOIN users u ON u.id = e.owner_id WHERE e.id = ?`
+  ).get(eventId)) as { starts_at: string; ends_at: string; organizer: string; certificate_theme: string; owner_name: string };
+  return {
+    workload: workloadMinutes(e.starts_at, e.ends_at),
+    organizer: e.organizer || e.owner_name,
+    responsible: e.owner_name,
+    theme: validCertificateTheme(e.certificate_theme),
+  };
 }
 
 const CERTIFICATE_EXPIRED = "O prazo para emitir o certificado terminou 1 ano apos o fim do evento.";
@@ -1342,10 +1360,12 @@ export async function selfIssueCertificate(formData: FormData) {
   if (reg!.status === "cancelled") back("/dashboard", "error", EVENT_CANCELLED);
   if (!canIssueCertificate(reg!.ends_at)) back("/dashboard", "error", CERTIFICATE_EXPIRED);
   const code = crypto.randomBytes(9).toString("hex").toUpperCase();
+  const snap = await certificateSnapshot(reg!.event_id);
   try {
     const result = await db.prepare(
-      "INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code) VALUES (?,?,?,?,?)"
-    ).run(user.id, reg!.event_id, user.id, reg!.title, code);
+      `INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code, workload_minutes, organizer_name, responsible_name, theme)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(user.id, reg!.event_id, user.id, reg!.title, code, snap.workload, snap.organizer, snap.responsible, snap.theme);
     await audit(user.id, "certificate.self_issued", "certificate", Number(result.lastInsertRowid));
   } catch {
     back("/dashboard", "error", "Ja existe certificado seu neste evento.");

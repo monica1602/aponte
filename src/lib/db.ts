@@ -85,6 +85,7 @@ export interface PlatformEvent {
   city: string;
   state: string;
   organizer: string;
+  certificate_theme: string;
   created_at: string;
 }
 
@@ -573,6 +574,13 @@ async function ensureMigrations(db: Db) {
     city: "TEXT NOT NULL DEFAULT ''",
     state: "TEXT NOT NULL DEFAULT ''",
     organizer: "TEXT NOT NULL DEFAULT ''",
+    certificate_theme: "TEXT NOT NULL DEFAULT 'classico'",
+  });
+  await addColumns(db, "certificates", {
+    workload_minutes: "INTEGER",
+    organizer_name: "TEXT",
+    responsible_name: "TEXT",
+    theme: "TEXT",
   });
   await addColumns(db, "projects", {
     open_contribution: "INTEGER NOT NULL DEFAULT 0",

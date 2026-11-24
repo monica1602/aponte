@@ -94,8 +94,8 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
               r.checked_in_at, r.checked_out_at, r.safe_home_at, r.created_at
        FROM event_registrations r JOIN events e ON e.id = r.event_id WHERE r.user_id = ? ORDER BY e.starts_at DESC`
     ),
-    certificados: await all("SELECT title, verification_code, issued_at FROM certificates WHERE user_id = ? ORDER BY issued_at DESC"),
-    eventos_organizados: await all("SELECT title, starts_at, ends_at, modality, location, status, created_at FROM events WHERE owner_id = ? ORDER BY starts_at DESC"),
+    certificados: await all("SELECT title, verification_code, issued_at, workload_minutes, organizer_name, responsible_name, theme FROM certificates WHERE user_id = ? ORDER BY issued_at DESC"),
+    eventos_organizados: await all("SELECT title, starts_at, ends_at, modality, location, status, certificate_theme, created_at FROM events WHERE owner_id = ? ORDER BY starts_at DESC"),
     mentorias: await all(
       `SELECT CASE WHEN m.mentor_id = ? THEN 'mentor' ELSE 'mentorado' END AS meu_papel, o.name AS outra_pessoa, m.status, m.created_at
        FROM mentorships m JOIN users o ON o.id = CASE WHEN m.mentor_id = ? THEN m.mentee_id ELSE m.mentor_id END

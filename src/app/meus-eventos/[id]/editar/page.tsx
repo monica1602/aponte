@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { CERTIFICATE_THEMES, validCertificateTheme } from "@/lib/certificate-themes";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
@@ -56,6 +57,9 @@ export default async function EditarEventoPage({ params, searchParams }: {
             <input name="city" defaultValue={e.city} placeholder="Cidade" aria-label="Cidade" className={inputCls} />
             <input name="state" defaultValue={e.state} placeholder="UF" aria-label="Estado (UF)" maxLength={2} className={inputCls} />
           </div>
+          <select name="certificate_theme" aria-label="Modelo do certificado" className={inputCls} defaultValue={validCertificateTheme(e.certificate_theme)}>
+            {CERTIFICATE_THEMES.map((t) => <option key={t.id} value={t.id}>Certificado: {t.label}</option>)}
+          </select>
           <label className="flex items-center gap-2 text-xs text-muted"><input name="require_approval" type="checkbox" defaultChecked={!!e.require_approval} /> Aprovar inscricoes manualmente</label>
           <button className={btnSecondaryCls}>Salvar alteracoes</button>
         </form>
