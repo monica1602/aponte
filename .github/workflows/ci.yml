@@ -39,3 +39,20 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/ponte_ci
       - name: Build
         run: npm run build
+      - name: Navegador dos testes E2E
+        run: npx playwright install --with-deps chromium
+      - name: Testes E2E no SQLite
+        run: npm run test:e2e
+      - name: Testes E2E no PostgreSQL
+        run: npm run test:e2e
+        env:
+          E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/ponte_e2e
+      - name: Prints e videos dos testes E2E que falharam
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-falhas
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 14

@@ -42,3 +42,8 @@ next-env.d.ts
 
 # sqlite data
 /data/
+
+# testes E2E (Playwright)
+/test-results/
+/playwright-report/
+/e2e/.data/
