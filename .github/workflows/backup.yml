@@ -55,7 +55,8 @@ jobs:
           tar -C "$RUNNER_TEMP/copia" -cf - . | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 \
             --symmetric --cipher-algo AES256 -o "$RUNNER_TEMP/backup/ponte-backup.tar.gpg" 3<<<"$BACKUP_PASSPHRASE"
           rm -rf "$RUNNER_TEMP/copia"
-          file "$RUNNER_TEMP/backup/ponte-backup.tar.gpg" | grep -q "GPG symmetrically encrypted data (AES256"
+          gpg --batch --pinentry-mode loopback --passphrase "" --list-packets "$RUNNER_TEMP/backup/ponte-backup.tar.gpg" 2>/dev/null \
+            | grep -qE "symkey enc packet: version [45], cipher 9,"
           ls -l "$RUNNER_TEMP/backup"
       - name: Nome da copia
         id: nome
