@@ -166,7 +166,7 @@ function SelfCheckOut({ r }: { r: RegistrationRow }) {
   if (r.status !== "approved" || !r.checked_in_at || r.event_status === "cancelled") return null;
   if (r.checked_out_at) return <p className="mt-2 text-xs text-cyan-300">✓ Check-out feito {safeHomeTime(r.checked_out_at)}</p>;
   if (!checkOutOpen(r.ends_at)) return null;
-  return <form action={selfCheckOutEvent} className="mt-2"><input type="hidden" name="registration_id" value={r.id} /><button className="text-xs text-cyan hover:underline">Fazer check-out</button></form>;
+  return <form action={selfCheckOutEvent} className="mt-2"><input type="hidden" name="registration_id" value={r.id} /><button className="text-xs text-cyan-300 hover:underline">Fazer check-out</button></form>;
 }
 
 function MyCertificate({ r }: { r: RegistrationRow }) {
