@@ -7,7 +7,7 @@ import { getSessionUser } from "@/lib/auth";
 import { SafeHomeButton } from "@/components/safe-home-button";
 import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
 import { CheckInButton } from "@/components/check-in-button";
-import { checkInWindow, spTime } from "@/lib/event-time";
+import { checkInWindow, checkOutOpen, spTime } from "@/lib/event-time";
 import { canIssueCertificate, safeHomeOpen } from "@/lib/retention";
 import {
   updateProfile,
@@ -18,6 +18,8 @@ import {
   addOpportunity,
   deleteOpportunity,
   checkInEvent,
+  checkOutEvent,
+  selfCheckOutEvent,
   confirmSafeHome,
   selfCheckInEvent,
   createMentee,
@@ -80,7 +82,7 @@ type EventRow = {
 };
 type RegistrationRow = {
   id: number; event_id: number; title: string; modality: string; starts_at: string; ends_at: string;
-  status: string; checked_in_at: string | null; safe_home_at: string | null;
+  status: string; checked_in_at: string | null; checked_out_at: string | null; safe_home_at: string | null;
   participant_id: number; participant_name: string; certificate_code: string | null; event_status: string;
 };
 type MeetingLink = LinkRow & { mentorship_id: number };
@@ -160,6 +162,13 @@ function SelfCheckIn({ r }: { r: RegistrationRow }) {
   return <CheckInButton action={selfCheckInEvent} registrationId={r.id} />;
 }
 
+function SelfCheckOut({ r }: { r: RegistrationRow }) {
+  if (r.status !== "approved" || !r.checked_in_at || r.event_status === "cancelled") return null;
+  if (r.checked_out_at) return <p className="mt-2 text-xs text-cyan-300">✓ Check-out feito {safeHomeTime(r.checked_out_at)}</p>;
+  if (!checkOutOpen(r.ends_at)) return null;
+  return <form action={selfCheckOutEvent} className="mt-2"><input type="hidden" name="registration_id" value={r.id} /><button className="text-xs text-cyan hover:underline">Fazer check-out</button></form>;
+}
+
 function MyCertificate({ r }: { r: RegistrationRow }) {
   if (r.certificate_code) return <p className="mt-2 flex gap-3 text-xs"><Link href={`/certificados/${r.certificate_code}`} className="text-accent hover:underline">Ver meu certificado →</Link><a href={`/certificados/${r.certificate_code}/pdf`} download className="text-accent hover:underline">Baixar PDF</a></p>;
   if (!r.checked_in_at || !canIssueCertificate(r.ends_at) || r.event_status === "cancelled") return null;
@@ -180,10 +189,11 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
             {participants.length > 0 && <ul className="mt-3 space-y-2 border-t border-line pt-2">{participants.map((r) => <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-xs"><span>{r.participant_name} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} />{r.safe_home_at && <span className="ml-1 text-emerald-300">· ✓ chegou bem {safeHomeTime(r.safe_home_at)}</span>}</span>{event.status !== "cancelled" && <div className="flex gap-2">
               {r.status === "requested" && <form action={reviewEventRegistration}><input type="hidden" name="registration_id" value={r.id} /><button name="decision" value="approve" className="text-emerald-300 hover:underline">aprovar</button><button name="decision" value="decline" className="ml-2 text-red-300 hover:underline">recusar</button></form>}
               {r.status === "approved" && !r.checked_in_at && <form action={checkInEvent}><input type="hidden" name="registration_id" value={r.id} /><button className="text-cyan hover:underline">check-in</button></form>}
+              {r.status === "approved" && r.checked_in_at && !r.checked_out_at && checkOutOpen(r.ends_at) && <form action={checkOutEvent}><input type="hidden" name="registration_id" value={r.id} /><button className="text-cyan hover:underline">check-out</button></form>}
               {r.checked_in_at && canIssueCertificate(r.ends_at) && <form action={issueCertificate}><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="recipient_id" value={r.participant_id} /><button className="text-accent hover:underline">emitir certificado</button></form>}
             </div>}</li>)}</ul>}
           </li>;
-        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p><SelfCheckIn r={r} />{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && safeHomeOpen(r.ends_at) && <SafeHomeButton action={confirmSafeHome} registrationId={r.id} />}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada {safeHomeTime(r.safe_home_at)}</p>}<MyCertificate r={r} />{canCancelRegistration(r) && <CancelRegistration eventId={r.event_id} returnTo="/dashboard" label="Cancelar inscricao" className="mt-3" />}</li>)}</ul>
+        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p><SelfCheckIn r={r} /><SelfCheckOut r={r} />{["in_person", "hybrid"].includes(r.modality) && r.checked_in_at && !r.safe_home_at && safeHomeOpen(r.ends_at) && <SafeHomeButton action={confirmSafeHome} registrationId={r.id} />}{r.safe_home_at && <p className="mt-2 text-xs text-emerald-300">✓ Chegada confirmada {safeHomeTime(r.safe_home_at)}</p>}<MyCertificate r={r} />{canCancelRegistration(r) && <CancelRegistration eventId={r.event_id} returnTo="/dashboard" label="Cancelar inscricao" className="mt-3" />}</li>)}</ul>
       )}
     </Card>
   );

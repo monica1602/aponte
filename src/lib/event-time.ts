@@ -18,3 +18,10 @@ export function spTime(ms: number): string {
 export function eventStarted(startsAt: string, now = Date.now()): boolean {
   return eventTimeMs(startsAt) <= now;
 }
+
+const CHECKOUT_AFTER_END_MS = 2 * 60 * 60 * 1000;
+
+/** O check-out vale do check-in ate 2 horas depois do fim do evento. */
+export function checkOutOpen(endsAt: string, now = Date.now()): boolean {
+  return now <= eventTimeMs(endsAt) + CHECKOUT_AFTER_END_MS;
+}

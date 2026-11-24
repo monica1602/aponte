@@ -21,7 +21,7 @@ import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
-import { checkInWindow, eventStarted, spTime } from "./event-time";
+import { checkInWindow, checkOutOpen, eventStarted, spTime } from "./event-time";
 import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate-limit";
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
 import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
@@ -948,6 +948,44 @@ export async function selfCheckInEvent(formData: FormData) {
   await audit(user.id, "event.self_checked_in", "event_registration", registrationId);
   if (row.owner_id !== user.id) await notify(row.owner_id, `${user.name} fez check-in no evento "${row.title}".`, "/meus-eventos");
   back(ret, "msg", "Check-in registrado. O organizador foi avisado da sua presenca.");
+}
+
+const CHECKOUT_CLOSED = "O check-out foi encerrado: ele vale ate 2 horas depois do fim do evento.";
+
+export async function selfCheckOutEvent(formData: FormData) {
+  const user = await me();
+  const registrationId = Number(formData.get("registration_id"));
+  const db = getDb();
+  const row = (await db.prepare(
+    `SELECT r.id, r.checked_out_at, e.title, e.owner_id, e.ends_at FROM event_registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ? AND r.user_id = ? AND r.status = 'approved' AND r.checked_in_at IS NOT NULL AND e.status = 'published'`
+  ).get(registrationId, user.id)) as { id: number; checked_out_at: string | null; title: string; owner_id: number; ends_at: string } | undefined;
+  if (!row) back("/dashboard", "error", "Check-out indisponivel: ele so vale depois do seu check-in.");
+  if (row.checked_out_at) back("/dashboard", "msg", "Seu check-out ja estava registrado.");
+  if (!checkOutOpen(row.ends_at)) back("/dashboard", "error", CHECKOUT_CLOSED);
+  const marked = await db.prepare("UPDATE event_registrations SET checked_out_at = datetime('now') WHERE id = ? AND checked_out_at IS NULL")
+    .run(registrationId);
+  if (!marked.changes) back("/dashboard", "msg", "Seu check-out ja estava registrado.");
+  await audit(user.id, "event.self_checked_out", "event_registration", registrationId);
+  if (row.owner_id !== user.id) await notify(row.owner_id, `${user.name} fez check-out no evento "${row.title}".`, "/meus-eventos");
+  back("/dashboard", "msg", "Check-out registrado. O organizador foi avisado da sua saida.");
+}
+
+export async function checkOutEvent(formData: FormData) {
+  const user = await me();
+  if (!isEventOwner(user)) redirect("/dashboard");
+  const registrationId = Number(formData.get("registration_id"));
+  const db = getDb();
+  const row = (await db.prepare(
+    `SELECT r.id, r.checked_out_at, e.ends_at FROM event_registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ? AND r.status = 'approved' AND r.checked_in_at IS NOT NULL AND e.owner_id = ? AND e.status = 'published'`
+  ).get(registrationId, user.id)) as { id: number; checked_out_at: string | null; ends_at: string } | undefined;
+  if (!row) back("/dashboard", "error", "Check-out indisponivel: ele so vale depois do check-in.");
+  if (row.checked_out_at) back("/dashboard", "msg", "O check-out ja estava registrado.");
+  if (!checkOutOpen(row.ends_at)) back("/dashboard", "error", CHECKOUT_CLOSED);
+  await db.prepare("UPDATE event_registrations SET checked_out_at = COALESCE(checked_out_at, datetime('now')) WHERE id = ?").run(registrationId);
+  await audit(user.id, "event.checked_out", "event_registration", registrationId);
+  back("/dashboard", "msg", "Check-out registrado.");
 }
 
 export async function confirmSafeHome(formData: FormData) {
