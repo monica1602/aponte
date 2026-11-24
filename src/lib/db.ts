@@ -20,6 +20,8 @@ export interface User {
   public_profile_consent: number;
   public_profile_consent_at: string | null;
   show_email: number;
+  /** Assinatura cursiva nos certificados: null usa o nome; vazio, sem assinatura. */
+  signature_name: string | null;
   email_network: number;
   email_reminders: number;
   news_consent: number;
@@ -568,6 +570,7 @@ async function ensureMigrations(db: Db) {
     email_network: "INTEGER NOT NULL DEFAULT 1",
     email_reminders: "INTEGER NOT NULL DEFAULT 1",
     news_consent: "INTEGER NOT NULL DEFAULT 0",
+    signature_name: "TEXT",
   });
   await addColumns(db, "events", {
     category: "TEXT NOT NULL DEFAULT ''",
@@ -581,6 +584,7 @@ async function ensureMigrations(db: Db) {
     organizer_name: "TEXT",
     responsible_name: "TEXT",
     theme: "TEXT",
+    responsible_signature: "TEXT",
   });
   await addColumns(db, "projects", {
     open_contribution: "INTEGER NOT NULL DEFAULT 0",

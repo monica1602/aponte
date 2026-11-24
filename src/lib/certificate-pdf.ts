@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import QRCode from "qrcode";
 import { certificateTheme, formatWorkload } from "./certificate-themes";
@@ -14,8 +17,14 @@ export type CertificateData = {
   workload_minutes?: number | null;
   organizer_name?: string | null;
   responsible_name?: string | null;
+  responsible_signature?: string | null;
   theme?: string | null;
 };
+
+let signatureFont: Promise<Buffer> | undefined;
+/** Great Vibes (SIL Open Font License), a letra cursiva da assinatura. */
+const signatureFontBytes = () =>
+  (signatureFont ??= readFile(path.join(process.cwd(), "src/fonts/GreatVibes-Regular.ttf")));
 
 const MODALITY: Record<string, string> = { online: "Online", in_person: "Presencial", hybrid: "Hibrido" };
 
@@ -106,6 +115,18 @@ export async function certificatePdf(c: CertificateData, validationUrl: string):
 
   if (c.responsible_name) {
     y = 200;
+    const signature = c.responsible_signature?.normalize("NFC").trim();
+    if (signature) {
+      try {
+        doc.registerFontkit(fontkit);
+        const cursive = await doc.embedFont(await signatureFontBytes(), { subset: true });
+        const size = Math.min(30, (30 * 240) / cursive.widthOfTextAtSize(signature, 30));
+        page.drawText(signature, { x: (width - cursive.widthOfTextAtSize(signature, size)) / 2, y: y + 7, size, font: cursive, color: ink });
+      } catch (error) {
+        signatureFont = undefined;
+        console.error("Falha ao desenhar a assinatura do certificado.", error);
+      }
+    }
     page.drawLine({ start: { x: width / 2 - 120, y }, end: { x: width / 2 + 120, y }, thickness: 0.75, color: muted });
     y -= 15; center(c.responsible_name, bold, 12);
     y -= 13; center("Responsavel pelo evento", regular, 9, muted);

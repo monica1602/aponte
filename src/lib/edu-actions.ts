@@ -94,6 +94,9 @@ export async function saveDetailedProfile(formData: FormData) {
   await getDb()
     .prepare("UPDATE users SET headline = ?, bio = ?, skills = ?, show_email = ? WHERE id = ?")
     .run(str(formData, "headline", 160), str(formData, "bio", 2000), skills, formData.get("show_email") === "on" ? 1 : 0, user.id);
+  if (user.role === "mentor" || user.role === "company") {
+    await getDb().prepare("UPDATE users SET signature_name = ? WHERE id = ?").run(str(formData, "signature_name", 60), user.id);
+  }
   await audit(user.id, "profile.updated", "user", user.id);
   await alertAdmin(`Cadastro atualizado: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   back(ret, "msg", "Perfil salvo. Ele ja e usado no calculo de compatibilidade.");

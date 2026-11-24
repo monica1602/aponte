@@ -1318,9 +1318,9 @@ export async function issueCertificate(formData: FormData) {
   const snap = await certificateSnapshot(eventId);
   try {
     const result = await db.prepare(
-      `INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code, workload_minutes, organizer_name, responsible_name, theme)
-       VALUES (?,?,?,?,?,?,?,?,?)`
-    ).run(recipientId, eventId, user.id, event!.title, code, snap.workload, snap.organizer, snap.responsible, snap.theme);
+      `INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code, workload_minutes, organizer_name, responsible_name, theme, responsible_signature)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    ).run(recipientId, eventId, user.id, event!.title, code, snap.workload, snap.organizer, snap.responsible, snap.theme, snap.signature);
     await audit(user.id, "certificate.issued", "certificate", Number(result.lastInsertRowid));
   } catch {
     back("/dashboard", "error", "Ja existe certificado para esta pessoa neste evento.");
@@ -1328,16 +1328,18 @@ export async function issueCertificate(formData: FormData) {
   redirect(`/certificados/${code}`);
 }
 
-/** Carga horaria, organizador, responsavel e modelo ficam gravados no certificado no momento da emissao. */
+/** Carga horaria, organizador, responsavel, assinatura e modelo ficam gravados no certificado no momento da emissao. */
 async function certificateSnapshot(eventId: number) {
   const e = (await getDb().prepare(
-    `SELECT e.starts_at, e.ends_at, e.organizer, e.certificate_theme, u.name AS owner_name
+    `SELECT e.starts_at, e.ends_at, e.organizer, e.certificate_theme, u.name AS owner_name,
+            COALESCE(u.signature_name, u.name) AS owner_signature
      FROM events e JOIN users u ON u.id = e.owner_id WHERE e.id = ?`
-  ).get(eventId)) as { starts_at: string; ends_at: string; organizer: string; certificate_theme: string; owner_name: string };
+  ).get(eventId)) as { starts_at: string; ends_at: string; organizer: string; certificate_theme: string; owner_name: string; owner_signature: string };
   return {
     workload: workloadMinutes(e.starts_at, e.ends_at),
     organizer: e.organizer || e.owner_name,
     responsible: e.owner_name,
+    signature: e.owner_signature,
     theme: validCertificateTheme(e.certificate_theme),
   };
 }
@@ -1363,9 +1365,9 @@ export async function selfIssueCertificate(formData: FormData) {
   const snap = await certificateSnapshot(reg!.event_id);
   try {
     const result = await db.prepare(
-      `INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code, workload_minutes, organizer_name, responsible_name, theme)
-       VALUES (?,?,?,?,?,?,?,?,?)`
-    ).run(user.id, reg!.event_id, user.id, reg!.title, code, snap.workload, snap.organizer, snap.responsible, snap.theme);
+      `INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code, workload_minutes, organizer_name, responsible_name, theme, responsible_signature)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    ).run(user.id, reg!.event_id, user.id, reg!.title, code, snap.workload, snap.organizer, snap.responsible, snap.theme, snap.signature);
     await audit(user.id, "certificate.self_issued", "certificate", Number(result.lastInsertRowid));
   } catch {
     back("/dashboard", "error", "Ja existe certificado seu neste evento.");

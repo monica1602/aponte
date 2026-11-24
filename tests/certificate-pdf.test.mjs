@@ -69,3 +69,14 @@ test("os 5 modelos geram o PDF, e um modelo desconhecido usa o classico", async 
   assert.equal(certificateTheme("inexistente").id, "classico");
   assert.deepEqual([formatWorkload(150), formatWorkload(120), formatWorkload(45), formatWorkload(null)], ["2h30", "2h", "45min", ""]);
 });
+
+test("assinatura cursiva do responsavel aparece acima da linha so quando cadastrada", async () => {
+  const base = { title: "Oficina", verification_code: "SIG1", issued_at: "2026-11-23 20:00:00", recipient_name: "Maria", starts_at: "2026-11-20T18:00", responsible_name: "Mônica Prüpst" };
+  const fonts = async (bytes) => (await PDFDocument.load(bytes)).context.enumerateIndirectObjects().map(([, o]) => String(o)).join("\n");
+  assert.ok((await fonts(await certificatePdf({ ...base, responsible_signature: "Mônica Prüpst" }, "https://exemplo.dev/certificados/SIG1"))).includes("/GreatVibes"), "faltou a fonte cursiva");
+  assert.ok(!(await fonts(await certificatePdf({ ...base, responsible_signature: "" }, "https://exemplo.dev/certificados/SIG1"))).includes("/GreatVibes"));
+  for (const theme of ["classico", "esmeralda", "grafite", "dourado", "coral"]) {
+    const doc = await PDFDocument.load(await certificatePdf({ ...base, theme, responsible_signature: "Um nome de assinatura bem comprido para caber" }, "https://exemplo.dev/certificados/SIG1"));
+    assert.equal(doc.getPageCount(), 1);
+  }
+});

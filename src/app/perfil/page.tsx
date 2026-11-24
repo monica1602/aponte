@@ -10,6 +10,7 @@ import {
   AREAS, COMPANY_TYPES, HELP_TYPES, MENTEE_LEVELS, MENTOR_LEVELS, MODALITIES, NO_TOOLS, PERIODS, SECTORS,
   SESSION_DURATIONS, TOOLS, UFS, WEEKDAYS, WEEKLY_HOURS,
 } from "@/lib/catalog";
+import { signatureFont } from "@/lib/fonts";
 import { Card, CheckGroup, Field, Flash, PageHeader, ROLE_LABELS, SelectField, btnCls, inputCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -71,6 +72,14 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
               <span className="block text-xs text-muted">Desligado, seu e-mail aparece so para quem tem mentoria, vinculo de empresa ou projeto ativo com voce.</span>
             </span>
           </label>
+          {(isMentor || isCompany) && (
+            <Field label="Assinatura nos certificados" hint="Aparece em letra cursiva, acima da linha, nos certificados dos eventos que voce cadastrar. Deixe vazio para nao usar.">
+              <input name="signature_name" defaultValue={user.signature_name ?? user.name} maxLength={60} className={inputCls} />
+              {(user.signature_name ?? user.name) && (
+                <p className={`${signatureFont.className} mt-2 text-3xl`}>{user.signature_name ?? user.name}</p>
+              )}
+            </Field>
+          )}
         </Card>
 
         {!isCompany && (
