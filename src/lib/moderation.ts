@@ -9,8 +9,8 @@ export const REPORT_REASONS = {
   outro: "Outro",
 } as const;
 export type ReportReason = keyof typeof REPORT_REASONS;
-export type ReportTarget = "user" | "message" | "project" | "event";
-export const REPORT_TARGETS: Record<ReportTarget, string> = { user: "Pessoa", message: "Mensagem", project: "Projeto", event: "Evento" };
+export type ReportTarget = "user" | "message" | "project" | "event" | "attachment";
+export const REPORT_TARGETS: Record<ReportTarget, string> = { user: "Pessoa", message: "Mensagem", project: "Projeto", event: "Evento", attachment: "Arquivo" };
 export const REPORT_DETAILS_MAX = 1000;
 export const REPORT_LIMIT = { max: 10, windowMin: 24 * 60 };
 export const REPORT_STATUS = { open: "Aberta", reviewing: "Em analise", closed: "Concluida" } as const;

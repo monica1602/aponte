@@ -4,6 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { ReportForm } from "@/components/report-form";
+import { AttachmentList, UploadForm } from "@/components/attachments";
+import { listAttachments } from "@/lib/attachments";
 import { getDb } from "@/lib/db";
 import { getProjectForViewer, isMembersOnlyProject } from "@/lib/projects";
 import { PROJECT_KINDS, PROJECT_STATUS, PROJECT_VISIBILITY, projectVisibility } from "@/lib/catalog";
@@ -39,6 +41,8 @@ export default async function ProjetoPage({
   if (!view) notFound();
   const { project: p, owner, isOwner, grantedMentors, participants } = view;
   const db = getDb();
+  const projectFiles = await listAttachments({ scope: "project", projectId: p.id });
+  const canAttach = !!user && (isOwner || participants.some((x) => x.id === user.id));
   const canComment = !!user && (isOwner || grantedMentors.some((m) => m.id === user.id) || participants.some((x) => x.id === user.id));
   const feedback = canComment
     ? (await db.prepare(
@@ -126,6 +130,13 @@ export default async function ProjetoPage({
             </form>
           </section>
         )}
+        <section>
+          <h2 className="font-semibold">Arquivos do projeto</h2>
+          <p className="mt-1 text-xs text-muted">Quem cria o projeto e quem foi aceito nele podem anexar ate 10 arquivos. Eles aparecem para quem pode ver o projeto.</p>
+          <AttachmentList items={projectFiles} showOwner reportFor={user?.id} ret={`/projetos/${p.id}`}
+            removableIds={projectFiles.filter((a) => isOwner || a.owner_id === user?.id).map((a) => a.id)} />
+          {canAttach && projectFiles.length < 10 && <UploadForm scope="project" targetId={p.id} />}
+        </section>
       </div>
 
       <aside className="space-y-4">

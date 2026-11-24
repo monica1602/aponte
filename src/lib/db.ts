@@ -476,6 +476,21 @@ CREATE TABLE IF NOT EXISTS user_blocks (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (blocker_id, blocked_id)
 );
+CREATE TABLE IF NOT EXISTS attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL CHECK(scope IN ('resume','profile','project','meeting','event_material','event_evidence')),
+  project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+  event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+  mentorship_meeting_id INTEGER REFERENCES mentorship_meetings(id) ON DELETE CASCADE,
+  company_meeting_id INTEGER REFERENCES company_meetings(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '',
+  filename TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS reviews (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -494,7 +509,7 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   reporter_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-  target_type TEXT NOT NULL CHECK(target_type IN ('user','message','project','event')),
+  target_type TEXT NOT NULL CHECK(target_type IN ('user','message','project','event','attachment')),
   target_id INTEGER NOT NULL,
   target_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   target_label TEXT NOT NULL DEFAULT '',
@@ -676,6 +691,32 @@ async function ensureMigrations(db: Db) {
     requested_by: "TEXT NOT NULL DEFAULT 'mentee'",
   });
   await keepCertificatesWithoutIssuer(db);
+  await allowAttachmentReports(db);
+}
+
+/** Denuncias de arquivo: amplia a regra do tipo de alvo, mantendo todas as denuncias existentes. */
+async function allowAttachmentReports(db: Db) {
+  if (db.dialect === "postgres") {
+    const c = (await db.prepare(
+      "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'reports'::regclass AND conname = 'reports_target_type_check'"
+    ).get()) as { def: string } | undefined;
+    if (!c || c.def.includes("attachment")) return;
+    await db.exec(`ALTER TABLE reports DROP CONSTRAINT reports_target_type_check;
+      ALTER TABLE reports ADD CONSTRAINT reports_target_type_check CHECK (target_type IN ('user','message','project','event','attachment'));`);
+    return;
+  }
+  const t = (await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'reports'").get()) as { sql: string } | undefined;
+  const oldCheck = "'project','event'))";
+  if (!t || t.sql.includes("'attachment'") || !t.sql.includes(oldCheck)) return;
+  const indexes = (await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'reports' AND sql IS NOT NULL").all()) as { sql: string }[];
+  const created = t.sql.replace(oldCheck, "'project','event','attachment'))").replace(/^CREATE TABLE "?reports"?/, "CREATE TABLE reports_new");
+  await db.exec(`BEGIN;
+    ${created};
+    INSERT INTO reports_new SELECT * FROM reports;
+    DROP TABLE reports;
+    ALTER TABLE reports_new RENAME TO reports;
+    ${indexes.map((i) => `${i.sql};`).join("\n")}
+    COMMIT;`);
 }
 
 /** Certificados continuam validos quando quem emitiu exclui a conta. No SQLite as chaves estrangeiras nao sao aplicadas. */

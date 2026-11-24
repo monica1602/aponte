@@ -10,6 +10,8 @@ import {
   AREAS, COMPANY_TYPES, HELP_TYPES, MENTEE_LEVELS, MENTOR_LEVELS, MODALITIES, NO_TOOLS, PERIODS, SECTORS,
   SESSION_DURATIONS, TOOLS, UFS, WEEKDAYS, WEEKLY_HOURS,
 } from "@/lib/catalog";
+import { AttachmentList, UploadForm } from "@/components/attachments";
+import { listAttachments } from "@/lib/attachments";
 import { signatureFont } from "@/lib/fonts";
 import { Card, CheckGroup, Field, Flash, PageHeader, ROLE_LABELS, SelectField, btnCls, inputCls } from "@/components/ui";
 
@@ -22,6 +24,7 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/primeiro-acesso");
   const p = await getProfile(user.id);
+  const [resume, files] = await Promise.all([listAttachments({ scope: "resume", ownerId: user.id }), listAttachments({ scope: "profile", ownerId: user.id })]);
   const completeness = Math.round(profileCompleteness(p, user.role) * 100);
   const isCompany = user.role === "company";
   const isMentor = user.role === "mentor";
@@ -132,6 +135,16 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
         <p className="text-xs text-muted">Campos com * sao obrigatorios.</p>
         <button className={`${btnCls} w-full sm:w-auto`}>Salvar perfil</button>
       </form>
+      <Card className="mt-10">
+        <h2 id="arquivos" className="scroll-mt-24 font-semibold">Curriculo e arquivos</h2>
+        <p className="mt-1 text-xs text-muted">O curriculo aparece so para quem tem uma mentoria, um vinculo ou um projeto ativo com voce, e para quem organiza um evento em que voce esta inscrita ou inscrito. Os arquivos de portfolio aparecem para quem pode ver o seu perfil.</p>
+        <h3 className="mt-4 text-sm font-semibold">Curriculo (PDF)</h3>
+        <AttachmentList items={resume} removableIds={resume.map((a) => a.id)} ret="/perfil" empty="Nenhum curriculo enviado." />
+        {resume.length === 0 && <UploadForm scope="resume" label="Enviar curriculo" pdfOnly withTitle={false} />}
+        <h3 className="mt-6 text-sm font-semibold">Portfolio e evidencias (ate 5)</h3>
+        <AttachmentList items={files} removableIds={files.map((a) => a.id)} ret="/perfil" />
+        {files.length < 5 && <UploadForm scope="profile" />}
+      </Card>
       <details id="excluir-conta" className="mt-10 rounded-lg border border-red-400/30 bg-red-400/5 p-5">
         <summary className="cursor-pointer text-sm font-semibold text-red-300">Excluir minha conta</summary>
         <form action={deleteAccount} data-no-keep className="mt-4 space-y-4">

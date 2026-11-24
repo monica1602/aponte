@@ -28,6 +28,7 @@ import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
+import { ATTACH_LIMIT, ATTACH_SCOPES, ATTACH_TITLE_MAX, ATTACH_USER_TOTAL, SCOPE_MAX, attachmentPath, canRemoveAttachment, canViewAttachment, fileProblem, getAttachment, safeFilename, sniffType, uploadDenied, userAttachmentBytes, whereFor, type AttachScope, type AttachTarget } from "./attachments";
 import { eventReviewTarget, mentorshipReviewTarget, myReview, reviewProblem } from "./reviews";
 import { REPORT_LIMIT, REPORT_REASONS, blockedBetween, reportProblem, type ReportOutcome, type ReportTarget } from "./moderation";
 import { eventHasHistory } from "./event-history";
@@ -427,6 +428,7 @@ export async function deleteAccount(formData: FormData) {
   await getDb().prepare("DELETE FROM email_changes WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM certificate_history WHERE certificate_id IN (SELECT id FROM certificates WHERE user_id = ?)").run(user.id);
   await getDb().prepare("UPDATE messages SET body = NULL WHERE sender_id = ?").run(user.id);
+  await getDb().prepare("DELETE FROM attachments WHERE owner_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);
   await alertAdmin(`Conta excluida pelo proprio usuario: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   redirect(`/login?msg=${encodeURIComponent("Sua conta e seus dados foram excluidos.")}`);
@@ -1703,7 +1705,7 @@ export async function respondContactRequest(formData: FormData) {
   back("/mensagens", "msg", "Pedido de contato recusado.");
 }
 
-const REPORT_RETURN = /^\/(pessoas|projetos|eventos)\/\d+$|^\/mensagens(\?c=\d+)?$/;
+const REPORT_RETURN = /^\/(pessoas|projetos|eventos)\/\d+$|^\/mensagens(\?c=\d+)?$|^\/encontros\/(mentoria|empresa)-\d+$/;
 
 export async function submitReport(formData: FormData) {
   const user = await me();
@@ -1731,6 +1733,9 @@ export async function submitReport(formData: FormData) {
     target = (await db.prepare("SELECT owner_id AS user_id, title AS label FROM projects WHERE id = ?").get(targetId)) as typeof target;
   } else if (type === "event") {
     target = (await db.prepare("SELECT owner_id AS user_id, title AS label FROM events WHERE id = ?").get(targetId)) as typeof target;
+  } else if (type === "attachment") {
+    const a = await getAttachment(targetId);
+    if (a && (await canViewAttachment(a, user))) target = { user_id: a.owner_id, label: a.title || a.filename };
   }
   if (!target) back(ret, "error", "Nao encontramos o que voce quer denunciar.");
   if (target!.user_id === user.id) back(ret, "error", "Voce nao pode denunciar a si mesmo.");
@@ -1866,4 +1871,61 @@ export async function submitReview(formData: FormData) {
     back("/dashboard", "msg", `Avaliacao enviada e conexao removida.${note}`);
   }
   back(kind === "event" ? `/eventos/${targetId}` : "/dashboard", "msg", `${existing ? "Avaliacao alterada." : "Avaliacao enviada."}${note}`);
+}
+
+function attachTarget(formData: FormData): AttachTarget {
+  const scope = (ATTACH_SCOPES as readonly string[]).includes(str(formData, "scope")) ? (str(formData, "scope") as AttachScope) : "profile";
+  const target = Number(formData.get("target_id")) || 0;
+  return { scope, projectId: target, eventId: target, meetingId: target, meetingKind: str(formData, "meeting_kind") === "company" ? "company" : "mentorship" };
+}
+
+export async function uploadAttachment(formData: FormData) {
+  const user = await me();
+  const t = attachTarget(formData);
+  const ret = attachmentPath(t);
+  const denied = await uploadDenied(t, user);
+  if (denied) back(ret, "error", denied);
+  const limit = { action: "attachment", subject: `user:${user.id}`, ...ATTACH_LIMIT };
+  const wait = await blockedFor([limit]);
+  if (wait) back(ret, "error", tooManyMessage(wait));
+  const file = formData.get("file");
+  if (!(file instanceof File)) back(ret, "error", "Escolha um arquivo.");
+  const bytes = new Uint8Array(await (file as File).arrayBuffer());
+  const type = sniffType(bytes);
+  const problem = fileProblem(bytes.length, type, t.scope);
+  if (problem) back(ret, "error", problem);
+  const db = getDb();
+  const [where, params] = whereFor({ ...t, ownerId: t.scope === "resume" || t.scope === "profile" || t.scope === "event_evidence" ? user.id : undefined });
+  const count = Number(((await db.prepare(`SELECT COUNT(*) AS n FROM attachments a WHERE ${where}`).get(...params)) as { n: number }).n);
+  if (count >= SCOPE_MAX[t.scope]) {
+    back(ret, "error", t.scope === "resume" || t.scope === "event_evidence" ? "Voce ja enviou este arquivo. Remova o atual para enviar outro." : `O limite aqui e de ${SCOPE_MAX[t.scope]} arquivos. Remova um para enviar outro.`);
+  }
+  if ((await userAttachmentBytes(user.id)) + bytes.length > ATTACH_USER_TOTAL) back(ret, "error", "Voce chegou ao limite de 12 MB em arquivos. Remova algum para enviar outro.");
+  const name = (file as File).name || "arquivo";
+  const title = str(formData, "title").slice(0, ATTACH_TITLE_MAX) || (t.scope === "resume" ? "Curriculo" : name.replace(/\.[^.]*$/, "").slice(0, ATTACH_TITLE_MAX));
+  const col = t.scope === "project" ? "project_id" : t.scope === "meeting" ? (t.meetingKind === "company" ? "company_meeting_id" : "mentorship_meeting_id") : t.scope.startsWith("event_") ? "event_id" : null;
+  const r = await db.prepare(
+    `INSERT INTO attachments (owner_id, scope, ${col ? `${col}, ` : ""}title, filename, mime, size, data) VALUES (?,?,${col ? "?," : ""}?,?,?,?,?)`
+  ).run(...[user.id, t.scope, ...(col ? [t.projectId ?? 0] : []), title, safeFilename(name, type!), type!, bytes.length, Buffer.from(bytes).toString("base64")]);
+  await recordAttempt("attachment", [limit.subject]);
+  await audit(user.id, "attachment.uploaded", "attachment", Number(r.lastInsertRowid));
+  back(ret, "msg", "Arquivo enviado.");
+}
+
+export async function removeAttachment(formData: FormData) {
+  const user = await me();
+  const a = await getAttachment(Number(formData.get("attachment_id")) || 0);
+  const ret = a ? attachmentPath({ scope: a.scope, projectId: a.project_id ?? 0, eventId: a.event_id ?? 0, meetingKind: a.company_meeting_id ? "company" : "mentorship", meetingId: a.company_meeting_id ?? a.mentorship_meeting_id ?? 0 }) : "/perfil#arquivos";
+  if (!a || !(await canRemoveAttachment(a, user.id))) back(ret, "error", "Arquivo nao encontrado.");
+  await getDb().prepare("DELETE FROM attachments WHERE id = ?").run(a!.id);
+  await audit(user.id, "attachment.removed", "attachment", a!.id);
+  back(ret, "msg", "Arquivo removido.");
+}
+
+export async function adminRemoveAttachment(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("attachment_id")) || 0;
+  const done = await getDb().prepare("DELETE FROM attachments WHERE id = ?").run(id);
+  if (done.changes) await audit(null, "admin.attachment_removed", "attachment", id);
+  back("/admin/denuncias", "msg", done.changes ? "Arquivo removido. Conclua a denuncia com a medida escolhida." : "O arquivo ja tinha sido removido.");
 }

@@ -210,6 +210,7 @@ export async function deleteProject(formData: FormData) {
      UNION SELECT mentor_id FROM project_mentor_invites WHERE project_id = ?
      UNION SELECT user_id FROM project_member_invites WHERE project_id = ?`
   ).all(id, id, id, id)) as unknown as { user_id: number }[];
+  await db.prepare("DELETE FROM attachments WHERE project_id = ?").run(id);
   await db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   for (const p of people) await notify(p.user_id, `O projeto "${project!.title}" foi excluido por ${user.name}.`, "/meus-projetos");
   await audit(user.id, "project.delete", "project", id);

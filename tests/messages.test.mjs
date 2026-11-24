@@ -33,3 +33,19 @@ test("avaliacoes: nota, comentario, relato sensivel e janela de 30 dias", async 
   assert.equal(eventReviewOpen("2026-01-10T12:00", end + 29 * 86400000), true);
   assert.equal(eventReviewOpen("2026-01-10T12:00", end + 31 * 86400000), false);
 });
+
+test("anexos: tipo pelo conteudo, tamanho e nome seguro", async () => {
+  const { sniffType, fileProblem, safeFilename, ATTACH_MAX_BYTES } = await import("../src/lib/attachments.ts");
+  const b = (s) => Uint8Array.from([...s].map((c) => c.charCodeAt(0)));
+  assert.equal(sniffType(b("%PDF-1.4 x")), "application/pdf");
+  assert.equal(sniffType(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0])), "image/png");
+  assert.equal(sniffType(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0])), "image/jpeg");
+  assert.equal(sniffType(b("RIFF....WEBPVP8 ")), "image/webp");
+  assert.equal(sniffType(b("<svg onload=alert(1)>")), null);
+  assert.equal(sniffType(b("PK\x03\x04")), null);
+  assert.match(fileProblem(ATTACH_MAX_BYTES + 1, "application/pdf", "profile"), /2 MB/);
+  assert.match(fileProblem(10, null, "profile"), /Formato/);
+  assert.match(fileProblem(10, "image/png", "resume"), /PDF/);
+  assert.equal(fileProblem(10, "image/png", "profile"), null);
+  assert.equal(safeFilename('Currículo "final".exe.pdf', "application/pdf"), "Curriculo-final-.exe.pdf");
+});

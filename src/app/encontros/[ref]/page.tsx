@@ -5,6 +5,8 @@ import { getSessionUser } from "@/lib/auth";
 import { addMeetingAgreement, saveMeetingNote, sendMeetingFeedback, toggleMeetingAgreement } from "@/lib/actions";
 import { listMeetings, meetingDetails, meetingPath, parseMeetingRef } from "@/lib/meetings";
 import { MeetingItem } from "@/components/meeting-item";
+import { AttachmentList, UploadForm } from "@/components/attachments";
+import { listAttachments } from "@/lib/attachments";
 import { Card, Flash, PageHeader, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +27,7 @@ export default async function EncontroPage({ params, searchParams }: {
   if (!m) notFound();
   const { note, agreements, feedback } = await meetingDetails(m.kind, m.id, user.id);
   const path = meetingPath(m.kind, m.id);
+  const files = await listAttachments({ scope: "meeting", meetingKind: m.kind, meetingId: m.id });
   const hidden = <><input type="hidden" name="kind" value={m.kind} /><input type="hidden" name="meeting_id" value={m.id} /></>;
   const mine = feedback.find((f) => f.author_id === user.id);
   return (
@@ -80,6 +83,12 @@ export default async function EncontroPage({ params, searchParams }: {
               <button className={btnCls}>Enviar feedback</button>
             </form>
           )}
+        </Card>
+        <Card>
+          <h2 className="font-semibold">Arquivos do encontro</h2>
+          <p className="mt-1 text-xs text-muted">So voce e {m.other_name} veem. Ate 10 arquivos por encontro.</p>
+          <AttachmentList items={files} showOwner reportFor={user.id} ret={path} removableIds={files.filter((a) => a.owner_id === user.id).map((a) => a.id)} />
+          {m.status !== "cancelled" && files.length < 10 && <UploadForm scope="meeting" targetId={m.id} meetingKind={m.kind} />}
         </Card>
       </div>
     </div>

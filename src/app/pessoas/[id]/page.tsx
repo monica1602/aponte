@@ -5,6 +5,8 @@ import { getSessionUser } from "@/lib/auth";
 import { blockUser, inviteToCompany, requestMentorship, sendMessage, toggleEndorsement } from "@/lib/actions";
 import { blockedBetween, hasBlocked } from "@/lib/moderation";
 import { ReportForm } from "@/components/report-form";
+import { AttachmentList } from "@/components/attachments";
+import { canSeeResume, listAttachments } from "@/lib/attachments";
 import { MESSAGE_MAX, canMessageDirect, conversationBetween } from "@/lib/messages";
 import { Badge, Card, Empty, Flash, SkillChips, TYPE_LABELS, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
 
@@ -38,6 +40,9 @@ export default async function PessoaPage({
   const db = getDb();
   const ret = `/pessoas/${profile.id}`;
   const showEmail = await canSeeEmail(viewer?.id ?? null, profile);
+  const resume = await listAttachments({ scope: "resume", ownerId: profile.id });
+  const showResume = resume.length > 0 && (viewer?.id === profile.id || (await canSeeResume(viewer?.id ?? null, profile)));
+  const files = await listAttachments({ scope: "profile", ownerId: profile.id });
 
   const isMentorSide = profile.role === "mentor" || profile.role === "company";
 
@@ -184,6 +189,16 @@ export default async function PessoaPage({
           </div>
         )}
       </Card>
+
+      {(files.length > 0 || resume.length > 0) && (
+        <Card>
+          <h2 className="font-semibold">Curriculo e arquivos</h2>
+          {resume.length > 0 && (showResume
+            ? <AttachmentList items={resume} reportFor={viewer?.id} ret={ret} />
+            : <p className="mt-2 text-sm text-muted">O curriculo aparece quando voces tiverem uma mentoria, um vinculo ou um projeto ativo.</p>)}
+          {files.length > 0 && <AttachmentList items={files} reportFor={viewer?.id} ret={ret} />}
+        </Card>
+      )}
 
       {profile.role === "mentee" && (
         <Card>

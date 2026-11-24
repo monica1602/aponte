@@ -4,6 +4,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { ReportForm } from "@/components/report-form";
+import { AttachmentList, UploadForm } from "@/components/attachments";
+import { listAttachments } from "@/lib/attachments";
 import { eventReviewTarget, eventSummary, myReview, REVIEW_MIN_SHOW } from "@/lib/reviews";
 import { getDb, type PlatformEvent } from "@/lib/db";
 import { deleteEvent, requestEventAccess, updateEventConsents } from "@/lib/actions";
@@ -49,6 +51,10 @@ export default async function EventoPage({
   const ret = `/eventos/${e.id}`;
   const showLink = e.online_url && registration === "approved" && !cancelledEvent;
 
+  const isOrganizer = user?.id === e.owner_id;
+  const materials = isOrganizer || reg?.status === "approved" ? await listAttachments({ scope: "event_material", eventId: e.id }) : null;
+  const canEvidence = reg?.status === "approved" && !!reg.checked_in_at;
+  const evidence = isOrganizer ? await listAttachments({ scope: "event_evidence", eventId: e.id }) : canEvidence && user ? await listAttachments({ scope: "event_evidence", eventId: e.id, ownerId: user.id }) : null;
   const canReview = user ? !!(await eventReviewTarget(user.id, e.id)) : false;
   const reviewed = canReview && user ? !!(await myReview(user.id, "event", e.id)) : false;
   const summary = user?.id === e.owner_id ? await eventSummary(e.id) : null;
@@ -80,6 +86,22 @@ export default async function EventoPage({
         <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: ret }} label="Excluir evento" className="mt-8">
           O evento e as inscricoes serao apagados. As pessoas inscritas recebem um aviso de cancelamento.
         </DeleteConfirm>
+      )}
+      {materials && (isOrganizer || materials.length > 0) && (
+        <Card className="mt-8">
+          <h2 className="font-semibold">Materiais do evento</h2>
+          <p className="mt-1 text-xs text-muted">{isOrganizer ? "Ate 10 arquivos. So as pessoas com inscricao confirmada veem." : "Materiais enviados pela organizacao para as pessoas inscritas."}</p>
+          <AttachmentList items={materials} reportFor={user?.id} ret={ret} removableIds={isOrganizer ? materials.map((a) => a.id) : []} />
+          {isOrganizer && materials.length < 10 && <UploadForm scope="event_material" targetId={e.id} label="Enviar material" />}
+        </Card>
+      )}
+      {evidence && (isOrganizer ? evidence.length > 0 : true) && (
+        <Card className="mt-8">
+          <h2 className="font-semibold">{isOrganizer ? "Evidencias dos participantes" : "Minha evidencia"}</h2>
+          <p className="mt-1 text-xs text-muted">{isOrganizer ? "Fotos ou prints enviados por quem fez check-in. So voce e quem enviou veem." : "Quem fez check-in pode enviar 1 foto ou print. So voce e a organizacao veem."}</p>
+          <AttachmentList items={evidence} showOwner={isOrganizer} reportFor={user?.id} ret={ret} removableIds={evidence.filter((a) => a.owner_id === user?.id).map((a) => a.id)} empty="Nenhuma evidencia enviada." />
+          {!isOrganizer && evidence.length === 0 && <UploadForm scope="event_evidence" targetId={e.id} label="Enviar evidencia" />}
+        </Card>
       )}
       {canReview && (
         <Card className="mt-8">

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
-import { adminCloseReport, adminReviewReport, adminUnsuspendUser } from "@/lib/actions";
+import { adminCloseReport, adminRemoveAttachment, adminReviewReport, adminUnsuspendUser } from "@/lib/actions";
 import { REPORT_OUTCOMES, REPORT_REASONS, REPORT_STATUS, REPORT_TARGETS, listReports, type ReportRow } from "@/lib/moderation";
 import { brDate } from "@/lib/my-data";
 import { AdminNav } from "@/components/admin-nav";
@@ -11,7 +11,7 @@ import { Badge, Card, Empty, Flash, btnCls, btnSecondaryCls, inputCls } from "@/
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Admin — Ponte" };
 
-const TARGET_PATH: Record<string, string> = { user: "/pessoas", project: "/projetos", event: "/eventos" };
+const TARGET_PATH: Record<string, string> = { user: "/pessoas", project: "/projetos", event: "/eventos", attachment: "/arquivos" };
 
 function Target({ r }: { r: ReportRow }) {
   const path = TARGET_PATH[r.target_type];
@@ -50,6 +50,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
                 <dd>{r.target_user_id ? <Link href={`/admin/usuarios/${r.target_user_id}`} className="text-accent hover:underline">{r.target_user_name}</Link> : "Conta excluida"}{r.target_user_status === "suspended" && " (suspensa)"}</dd>
                 {r.details && <><dt>Descricao</dt><dd className="whitespace-pre-wrap text-fg [overflow-wrap:anywhere]">{r.details}</dd></>}
                 {r.message_body !== null && <><dt>Mensagem denunciada</dt><dd className="whitespace-pre-wrap rounded-md bg-raised px-3 py-2 text-fg [overflow-wrap:anywhere]">{r.message_body}</dd></>}
+                {r.target_type === "attachment" && r.status !== "closed" && <><dt>Arquivo</dt><dd><form action={adminRemoveAttachment}><input type="hidden" name="attachment_id" value={r.target_id} /><button className="text-red-300 hover:underline">Remover arquivo</button></form></dd></>}
                 {r.status === "closed" && <><dt>Medida</dt><dd>{r.outcome ? REPORT_OUTCOMES[r.outcome] : ""} em {brDate(r.closed_at ?? "")}{r.admin_note && ` · ${r.admin_note}`}</dd></>}
               </dl>
               {r.status !== "closed" && (
