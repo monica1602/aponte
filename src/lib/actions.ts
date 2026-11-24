@@ -27,6 +27,9 @@ import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
 import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
+import {
+  REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
+} from "./my-data";
 import { createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
@@ -398,6 +401,8 @@ export async function deleteAccount(formData: FormData) {
   await getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM legal_acceptances WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM consent_events WHERE user_id = ?").run(user.id);
+  await getDb().prepare("DELETE FROM data_requests WHERE user_id = ?").run(user.id);
+  await getDb().prepare("DELETE FROM email_changes WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);
   await alertAdmin(`Conta excluida pelo proprio usuario: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   redirect(`/login?msg=${encodeURIComponent("Sua conta e seus dados foram excluidos.")}`);
@@ -1028,4 +1033,103 @@ export async function disputeAccount(formData: FormData) {
   await audit(null, "account.disputed", "user", target!.user_id);
   await alertAdmin(`Cadastro contestado pelo dono do e-mail: ${target!.name} (${ROLE_PT[target!.role] ?? target!.role}). A conta foi desativada.`);
   redirect("/verificar-email?status=desativada");
+}
+
+const MY_DATA = "/meus-dados";
+
+export async function updateName(formData: FormData) {
+  const user = await me();
+  const name = str(formData, "name").slice(0, 120);
+  if (name.length < 2) back(MY_DATA, "error", "Informe o nome com pelo menos 2 caracteres.");
+  if (name === user.name) back(MY_DATA, "msg", "O nome continua o mesmo.");
+  await getDb().prepare("UPDATE users SET name = ? WHERE id = ?").run(name, user.id);
+  await audit(user.id, "user.name_changed", "user", user.id);
+  back(MY_DATA, "msg", "Nome atualizado.");
+}
+
+export async function requestEmailChange(formData: FormData) {
+  const user = await me();
+  const email = str(formData, "email").slice(0, 200).toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const limit = { action: "email_change", subject: `user:${user.id}`, max: 5, windowMin: 60 };
+  const wait = await blockedFor([limit]);
+  if (wait) back(MY_DATA, "error", tooManyMessage(wait));
+  if (!EMAIL_RE.test(email)) back(MY_DATA, "error", "Informe um email valido, por exemplo nome@dominio.com.");
+  if (email === user.email.toLowerCase()) back(MY_DATA, "error", "Este ja e o seu e-mail atual.");
+  const db = getDb();
+  const row = (await db.prepare("SELECT password_hash FROM users WHERE id = ?").get(user.id)) as { password_hash: string } | undefined;
+  await recordAttempt("email_change", [limit.subject]);
+  if (!row || !verifyPassword(password, row.password_hash)) back(MY_DATA, "error", "Senha incorreta. O e-mail nao foi alterado.");
+  if (await db.prepare("SELECT id FROM users WHERE lower(email) = ?").get(email)) {
+    back(MY_DATA, "error", "Este e-mail ja esta em uso em outra conta.");
+  }
+  const token = await createEmailChange(user.id, email);
+  const link = `${await siteUrl()}/meus-dados/confirmar-email?token=${token}`;
+  after(() =>
+    sendPlainEmail(email, "confirme seu novo e-mail", [
+      `Ola, ${user.name}!`,
+      "Voce pediu para trocar o e-mail da sua conta na Ponte para este endereco. Para concluir, clique no botao abaixo. O link vale por 24 horas e so pode ser usado uma vez.",
+      "Se nao foi voce, ignore este e-mail. Nada sera alterado.",
+    ], { label: "Confirmar meu novo e-mail", link })
+  );
+  await audit(user.id, "email.change_requested", "user", user.id);
+  back(MY_DATA, "msg", `Enviamos um link de confirmacao para ${email}. Seu e-mail so muda depois do clique nesse link.`);
+}
+
+export async function confirmEmailChange(formData: FormData) {
+  const token = str(formData, "token");
+  const target = await emailChangeTarget(token);
+  const done = (status: string) => redirect(`/meus-dados/confirmar-email?status=${status}`);
+  if (!target) done("invalido");
+  if (target!.expired) done("vencido");
+  const db = getDb();
+  if (await db.prepare("SELECT id FROM users WHERE lower(email) = ? AND id <> ?").get(target!.new_email, target!.user_id)) done("em-uso");
+  try {
+    await db
+      .prepare("UPDATE users SET email = ?, email_status = 'verified', email_verified_at = datetime('now') WHERE id = ?")
+      .run(target!.new_email, target!.user_id);
+  } catch {
+    done("em-uso");
+  }
+  await markEmailChangeUsed(token);
+  await audit(target!.user_id, "email.changed", "user", target!.user_id);
+  after(() =>
+    sendPlainEmail(target!.old_email, "seu e-mail foi trocado", [
+      `Ola, ${target!.name}!`,
+      `O e-mail da sua conta na Ponte foi trocado para ${target!.new_email}. A partir de agora, use o novo e-mail para entrar.`,
+      "Se nao foi voce, avise a administracao da Ponte.",
+    ])
+  );
+  done("confirmado");
+}
+
+export async function createDataRequest(formData: FormData) {
+  const user = await me();
+  const kind = str(formData, "kind") as RequestKind;
+  const message = str(formData, "message").slice(0, 2000);
+  if (!REQUEST_KINDS.includes(kind)) back(MY_DATA, "error", "Escolha o tipo do pedido.");
+  if ((kind === "correcao" || kind === "outro") && !message) back(MY_DATA, "error", "Descreva o seu pedido.");
+  const limit = { action: "data_request", subject: `user:${user.id}`, max: 5, windowMin: 24 * 60 };
+  const wait = await blockedFor([limit]);
+  if (wait) back(MY_DATA, "error", tooManyMessage(wait));
+  await recordAttempt("data_request", [limit.subject]);
+  const result = await getDb().prepare("INSERT INTO data_requests (user_id, kind, message) VALUES (?,?,?)").run(user.id, kind, message);
+  await audit(user.id, "data_request.created", "data_request", Number(result.lastInsertRowid));
+  await alertAdmin(`Novo pedido sobre dados (${REQUEST_KIND_PT[kind]}) de ${user.name}. Responda em Pedidos LGPD.`);
+  back(MY_DATA, "msg", "Pedido enviado. A resposta vai aparecer aqui, em ate 15 dias.");
+}
+
+export async function answerDataRequest(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("id"));
+  const response = str(formData, "response").slice(0, 4000);
+  if (!response) back("/admin/pedidos", "error", "Escreva a resposta antes de concluir o pedido.");
+  const db = getDb();
+  const req = (await db.prepare("SELECT user_id FROM data_requests WHERE id = ? AND status = 'open'").get(id)) as { user_id: number } | undefined;
+  if (!req) back("/admin/pedidos", "error", "Pedido nao encontrado ou ja respondido.");
+  await db.prepare("UPDATE data_requests SET status = 'done', response = ?, answered_at = datetime('now') WHERE id = ?").run(response, id);
+  await audit(null, "data_request.answered", "data_request", id);
+  await notify(req!.user_id, "Seu pedido sobre seus dados foi respondido.", MY_DATA);
+  await emailUser(req!.user_id, "seu pedido sobre seus dados foi respondido", "A administracao da Ponte respondeu ao seu pedido sobre seus dados.", "Ver a resposta", MY_DATA);
+  back("/admin/pedidos", "msg", "Pedido respondido e concluido.");
 }

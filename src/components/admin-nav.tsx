@@ -8,6 +8,7 @@ const ITEMS = [
   { href: "/admin/empresas", label: "Empresas" },
   { href: "/admin/eventos", label: "Eventos" },
   { href: "/admin/cadastros", label: "Cadastros e convites" },
+  { href: "/admin/pedidos", label: "Pedidos LGPD" },
   { href: "/admin/seguranca", label: "Seguranca" },
 ];
 

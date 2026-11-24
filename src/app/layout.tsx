@@ -32,6 +32,7 @@ function accountNav(role: string) {
   const base = [
     { href: "/dashboard", label: "Painel" },
     { href: "/perfil", label: "Meu perfil" },
+    { href: "/meus-dados", label: "Meus dados" },
   ];
   if (role === "mentor")
     return [...base,
