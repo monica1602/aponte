@@ -89,7 +89,7 @@ export default async function TarefasPage({ params, searchParams }: { params: Pr
             <textarea name="description" rows={2} maxLength={TASK_TEXT_MAX} placeholder="Descricao (opcional)" aria-label="Descricao da tarefa" className={inputCls} />
             <div className="grid gap-2 sm:grid-cols-2">
               {coord ? (
-                <select name="assignee_id" defaultValue="" aria-label="Responsavel" className={inputCls}>
+                <select name="assignee_id" defaultValue={me.id} aria-label="Responsavel" className={inputCls}>
                   <option value="">Sem responsavel</option>
                   {people.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>

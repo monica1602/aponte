@@ -1,5 +1,6 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { bareUrl } from "./url";
 import { audit, getDb, getProfile, notify, saveProfile, type Profile, type Project } from "./db";
 import { back, csv, one, pick, requireUser, requireVerified, safeReturn, str } from "./session";
@@ -562,6 +563,10 @@ export async function markNotificationsRead(formData: FormData) {
 
 // ---------------- Tarefas e entregas dos projetos ----------------
 
+function backAt(ret: string, hash: string, text: string): never {
+  redirect(`${ret}?msg=${encodeURIComponent(text)}#${hash}`);
+}
+
 async function taskScope(formData: FormData) {
   const user = await requireUser();
   const id = Number(formData.get("project_id")) || 0;
@@ -605,7 +610,7 @@ export async function createProjectTask(formData: FormData) {
   if (assignee && assignee !== user.id) {
     await tellTask(assignee, `${user.name} passou para voce a tarefa "${title}" do projeto "${view.project.title}".`, ret, "Voce recebeu uma tarefa");
   }
-  back(`${ret}#tarefa-${Number(r.lastInsertRowid)}`, "msg", "Tarefa criada.");
+  backAt(ret, `tarefa-${Number(r.lastInsertRowid)}`, "Tarefa criada.");
 }
 
 export async function assignProjectTask(formData: FormData) {
@@ -620,7 +625,7 @@ export async function assignProjectTask(formData: FormData) {
   if (assignee && assignee !== user.id) {
     await tellTask(assignee, `${user.name} passou para voce a tarefa "${task!.title}" do projeto "${view.project.title}".`, ret, "Voce recebeu uma tarefa");
   }
-  back(`${ret}#tarefa-${task!.id}`, "msg", assignee ? "Responsavel atualizado." : "A tarefa ficou sem responsavel.");
+  backAt(ret, `tarefa-${task!.id}`, assignee ? "Responsavel atualizado." : "A tarefa ficou sem responsavel.");
 }
 
 export async function setProjectTaskStatus(formData: FormData) {
@@ -633,7 +638,7 @@ export async function setProjectTaskStatus(formData: FormData) {
   }
   await getDb().prepare("UPDATE project_tasks SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, task!.id);
   await audit(user.id, "project.task_status", "project", id);
-  back(`${ret}#tarefa-${task!.id}`, "msg", `Situacao: ${TASK_STATUS[status as TaskStatus]}.`);
+  backAt(ret, `tarefa-${task!.id}`, `Situacao: ${TASK_STATUS[status as TaskStatus]}.`);
 }
 
 export async function deleteProjectTask(formData: FormData) {
@@ -670,7 +675,7 @@ export async function submitProjectDelivery(formData: FormData) {
   for (const r of team.filter((m) => (m.role === "coordinator" || m.role === "mentor") && m.id !== user.id)) {
     await tellTask(r.id, `${user.name} entregou a tarefa "${task!.title}" do projeto "${view.project.title}". A entrega espera revisao.`, ret, "Uma entrega espera revisao");
   }
-  back(`${ret}#tarefa-${task!.id}`, "msg", "Entrega enviada para revisao.");
+  backAt(ret, `tarefa-${task!.id}`, "Entrega enviada para revisao.");
 }
 
 export async function reviewProjectDelivery(formData: FormData) {
@@ -694,7 +699,7 @@ export async function reviewProjectDelivery(formData: FormData) {
       ? `${user.name} aprovou a sua entrega da tarefa "${d!.title}" do projeto "${view.project.title}".`
       : `${user.name} pediu ajustes na sua entrega da tarefa "${d!.title}" do projeto "${view.project.title}".`, ret, decision === "approved" ? "Sua entrega foi aprovada" : "Sua entrega precisa de ajustes");
   }
-  back(`${ret}#tarefa-${d!.task_id}`, "msg", decision === "approved" ? "Entrega aprovada. A tarefa ficou Feita." : "Ajustes pedidos. A tarefa voltou para Fazendo.");
+  backAt(ret, `tarefa-${d!.task_id}`, decision === "approved" ? "Entrega aprovada. A tarefa ficou Feita." : "Ajustes pedidos. A tarefa voltou para Fazendo.");
 }
 
 export async function setProjectMemberRole(formData: FormData) {
@@ -714,5 +719,5 @@ export async function setProjectMemberRole(formData: FormData) {
     }
   }
   await audit(user.id, "project.member_role", "project", id);
-  back(`${ret}#equipe`, "msg", `Papel de ${member!.name} atualizado.`);
+  backAt(ret, `equipe`, `Papel de ${member!.name} atualizado.`);
 }

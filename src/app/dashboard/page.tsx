@@ -423,6 +423,19 @@ export default async function DashboardPage({
         <Badge kind={user.role} />
       </div>
       <Flash params={sp} />
+      {myTasks.length > 0 && (
+        <Card>
+          <h2 className="font-semibold">Minhas tarefas</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            {myTasks.map((t) => (
+              <li key={t.id} className="rounded-lg bg-raised px-3 py-2">
+                <Link href={`/projetos/${t.project_id}/tarefas#tarefa-${t.id}`} className="font-medium text-accent hover:underline [overflow-wrap:anywhere]">{t.title}</Link>
+                <p className="text-xs text-muted">{t.project_title} · {TASK_STATUS[t.status]}{t.due_on && ` · Prazo: ${brDay(t.due_on)}`}</p>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
@@ -554,19 +567,6 @@ export default async function DashboardPage({
               <MyEvents events={myEvents} registrations={eventRegistrations} owner />
               <OpportunityEditor myOpps={myOpps} />
             </>
-          )}
-          {myTasks.length > 0 && (
-            <Card>
-              <h2 className="font-semibold">Minhas tarefas</h2>
-              <ul className="mt-3 space-y-2 text-sm">
-                {myTasks.map((t) => (
-                  <li key={t.id} className="rounded-lg bg-raised px-3 py-2">
-                    <Link href={`/projetos/${t.project_id}/tarefas#tarefa-${t.id}`} className="font-medium text-accent hover:underline [overflow-wrap:anywhere]">{t.title}</Link>
-                    <p className="text-xs text-muted">{t.project_title} · {TASK_STATUS[t.status]}{t.due_on && ` · Prazo: ${brDay(t.due_on)}`}</p>
-                  </li>
-                ))}
-              </ul>
-            </Card>
           )}
           <Card>
             <h2 className="font-semibold">Seu perfil publico</h2>
