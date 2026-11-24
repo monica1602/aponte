@@ -12,3 +12,12 @@ test("mensagens: par ordenado, outra pessoa, tamanho e horario", () => {
   assert.match(messageProblem("x".repeat(MESSAGE_MAX + 1)), /ate 2000 caracteres/);
   assert.equal(messageTime("2026-11-24 13:05:00"), "24/11/2026, 10:05");
 });
+
+test("denuncias: motivo, tamanho e Outro com texto", async () => {
+  const { reportProblem, REPORT_DETAILS_MAX } = await import("../src/lib/moderation.ts");
+  assert.equal(reportProblem("xyz", ""), "Escolha o motivo da denuncia.");
+  assert.equal(reportProblem("assedio", ""), null);
+  assert.match(reportProblem("outro", ""), /descreva/);
+  assert.equal(reportProblem("outro", "texto"), null);
+  assert.match(reportProblem("spam", "x".repeat(REPORT_DETAILS_MAX + 1)), /ate 1000/);
+});

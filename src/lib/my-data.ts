@@ -61,6 +61,8 @@ export const MY_DATA_SECTIONS = {
   feedbacks_escritos: "Feedbacks escritos",
   oportunidades: "Oportunidades publicadas",
   mensagens: "Mensagens",
+  pessoas_bloqueadas: "Pessoas bloqueadas",
+  denuncias_feitas: "Denuncias feitas",
   notificacoes: "Notificacoes",
   pedidos_sobre_dados: "Pedidos sobre seus dados",
   registro_de_acoes: "Registro das suas acoes (auditoria)",
@@ -172,6 +174,8 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
        WHERE c.user_a = ? OR c.user_b = ? ORDER BY m.created_at, m.id`,
       4
     ),
+    pessoas_bloqueadas: await all("SELECT u.name AS pessoa, b.created_at FROM user_blocks b JOIN users u ON u.id = b.blocked_id WHERE b.blocker_id = ? ORDER BY b.created_at"),
+    denuncias_feitas: await all("SELECT target_type AS tipo, target_label AS denunciado, reason AS motivo, details AS descricao, status AS situacao, created_at, closed_at FROM reports WHERE reporter_id = ? ORDER BY created_at"),
     notificacoes: await all("SELECT body, link, read_at, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC"),
     pedidos_sobre_dados: await all("SELECT kind, message, status, response, created_at, answered_at FROM data_requests WHERE user_id = ? ORDER BY created_at DESC"),
     registro_de_acoes: await all("SELECT action, entity_type, created_at FROM audit_log WHERE actor_id = ? ORDER BY created_at DESC"),

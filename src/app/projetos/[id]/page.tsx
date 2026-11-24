@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { ReportForm } from "@/components/report-form";
 import { getDb } from "@/lib/db";
 import { getProjectForViewer, isMembersOnlyProject } from "@/lib/projects";
 import { PROJECT_KINDS, PROJECT_STATUS, PROJECT_VISIBILITY, projectVisibility } from "@/lib/catalog";
@@ -98,6 +99,7 @@ export default async function ProjetoPage({
           <p className="mt-2 text-sm text-muted">
             Por <Link href={`/pessoas/${owner.id}`} className="text-accent hover:underline">{owner.name}</Link> ({ROLE_LABELS[owner.role]})
           </p>
+          {user && user.id !== owner.id && <div className="mt-2"><ReportForm type="project" id={p.id} ret={`/projetos/${p.id}`} label="Denunciar projeto" /></div>}
         </div>
         {p.summary && <p className="text-lg text-fg/90">{p.summary}</p>}
         <p className="whitespace-pre-line leading-relaxed text-muted">{p.description}</p>

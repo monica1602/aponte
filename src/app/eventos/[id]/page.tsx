@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { ReportForm } from "@/components/report-form";
 import { getDb, type PlatformEvent } from "@/lib/db";
 import { deleteEvent, requestEventAccess, updateEventConsents } from "@/lib/actions";
 import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
@@ -58,6 +59,7 @@ export default async function EventoPage({
       <h1 className="mt-3 text-3xl font-bold tracking-tight">{e.title}</h1>
       {cancelledEvent && <p className="mt-3 rounded-md border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300">Este evento foi cancelado pela organizacao.</p>}
       <p className="mt-2 text-sm text-muted">Organizado por {e.organizer || e.owner_name}</p>
+      {user && user.id !== e.owner_id && <div className="mt-2"><ReportForm type="event" id={e.id} ret={`/eventos/${e.id}`} label="Denunciar evento" /></div>}
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <Card><dt className="text-xs text-muted">Quando</dt><dd className="mt-1 text-sm">{new Date(e.starts_at).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" })} ate {new Date(e.ends_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</dd></Card>
         <Card><dt className="text-xs text-muted">Onde</dt><dd className="mt-1 text-sm">

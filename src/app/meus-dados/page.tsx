@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
-import { createDataRequest, requestEmailChange, saveEmailPreferences, updateName } from "@/lib/actions";
+import { blockUser, createDataRequest, requestEmailChange, saveEmailPreferences, updateName } from "@/lib/actions";
+import { listBlocked } from "@/lib/moderation";
 import {
   MY_DATA_SECTIONS, REQUEST_DEADLINE_DAYS, REQUEST_KIND_PT, REQUEST_KINDS, brDate, collectMyData, myDataRequests,
   pendingEmailChange, requestDeadline,
@@ -19,7 +20,7 @@ function count(value: unknown): string {
 export default async function MeusDadosPage({ searchParams }: { searchParams: Promise<{ msg?: string; error?: string }> }) {
   const sp = await searchParams;
   const user = await requireUser();
-  const [data, requests, newEmail] = await Promise.all([collectMyData(user.id), myDataRequests(user.id), pendingEmailChange(user.id)]);
+  const [data, requests, newEmail, blocked] = await Promise.all([collectMyData(user.id), myDataRequests(user.id), pendingEmailChange(user.id), listBlocked(user.id)]);
   const sections = Object.entries(MY_DATA_SECTIONS).filter(([k]) => k !== "conta") as [keyof typeof MY_DATA_SECTIONS, string][];
   return (
     <div className="mx-auto max-w-3xl py-8">
@@ -103,7 +104,26 @@ export default async function MeusDadosPage({ searchParams }: { searchParams: Pr
       </Card>
 
       <Card className="mt-6">
-        <h2 className="font-semibold">5. Fazer um pedido a administracao</h2>
+        <h2 id="bloqueios" className="scroll-mt-24 font-semibold">5. Pessoas bloqueadas</h2>
+        <p className="mt-1 text-sm text-muted">Quem voce bloqueou nao pode enviar mensagens, pedidos de contato nem convites para voce, e nao e avisado.</p>
+        {blocked.length === 0 ? <p className="mt-3 text-sm text-muted">Voce nao bloqueou ninguem.</p> : (
+          <ul className="mt-3 space-y-2 text-sm">
+            {blocked.map((b) => (
+              <li key={b.id} className="flex items-center justify-between gap-2">
+                <span>{b.name} <span className="text-xs text-muted">· desde {brDate(b.created_at)}</span></span>
+                <form action={blockUser}>
+                  <input type="hidden" name="user_id" value={b.id} />
+                  <input type="hidden" name="return" value="/meus-dados" />
+                  <button name="decision" value="unblock" className={btnSecondaryCls}>Desbloquear</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card className="mt-6">
+        <h2 className="font-semibold">6. Fazer um pedido a administracao</h2>
         <p className="mt-1 text-sm text-muted">Para o que voce nao consegue fazer sozinho aqui. A administracao responde em ate {REQUEST_DEADLINE_DAYS} dias.</p>
         <form action={createDataRequest} className="mt-4 space-y-3">
           <Field label="Tipo do pedido">
@@ -136,7 +156,7 @@ export default async function MeusDadosPage({ searchParams }: { searchParams: Pr
       </Card>
 
       <Card className="mt-6">
-        <h2 className="font-semibold">6. Excluir minha conta</h2>
+        <h2 className="font-semibold">7. Excluir minha conta</h2>
         <p className="mt-1 text-sm text-muted">Apaga de forma definitiva sua conta e os dados ligados a ela.</p>
         <Link href="/perfil#excluir-conta" className="mt-3 inline-block text-sm text-red-300 hover:underline">Ir para a exclusao da conta →</Link>
       </Card>

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { getDriver, setIdTables, type Param, type Row, type RunResult } from "./sql";
 
 export type Role = "mentor" | "mentee" | "company";
-export type AccountStatus = "pending" | "active" | "rejected" | "disputed";
+export type AccountStatus = "pending" | "active" | "rejected" | "disputed" | "suspended";
 export type EmailStatus = "verified" | "pending" | "disputed";
 
 export interface User {
@@ -470,6 +470,28 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+CREATE TABLE IF NOT EXISTS user_blocks (
+  blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (blocker_id, blocked_id)
+);
+CREATE TABLE IF NOT EXISTS reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  reporter_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  target_type TEXT NOT NULL CHECK(target_type IN ('user','message','project','event')),
+  target_id INTEGER NOT NULL,
+  target_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  target_label TEXT NOT NULL DEFAULT '',
+  message_body TEXT,
+  reason TEXT NOT NULL,
+  details TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','reviewing','closed')),
+  outcome TEXT CHECK(outcome IN ('archived','warned','suspended')),
+  admin_note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  closed_at TEXT
+);
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

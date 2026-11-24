@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canSeeEmail, getDb, getUser } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { inviteToCompany, requestMentorship, sendMessage, toggleEndorsement } from "@/lib/actions";
+import { blockUser, inviteToCompany, requestMentorship, sendMessage, toggleEndorsement } from "@/lib/actions";
+import { blockedBetween, hasBlocked } from "@/lib/moderation";
+import { ReportForm } from "@/components/report-form";
 import { MESSAGE_MAX, canMessageDirect, conversationBetween } from "@/lib/messages";
 import { Badge, Card, Empty, Flash, SkillChips, TYPE_LABELS, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
 
@@ -31,6 +33,7 @@ export default async function PessoaPage({
   const profile = await getUser(Number(id));
   if (!profile) notFound();
   const viewer = await getSessionUser();
+  if (profile.account_status === "suspended" && viewer?.id !== profile.id) notFound();
   if (!profile.public_profile_consent && viewer?.id !== profile.id) notFound();
   const db = getDb();
   const ret = `/pessoas/${profile.id}`;
@@ -92,6 +95,9 @@ export default async function PessoaPage({
   const existing = canContact ? await conversationBetween(viewer!.id, profile.id) : undefined;
   const conversation = existing?.status === "declined" && existing.requested_by !== viewer?.id ? undefined : existing;
   const direct = canContact ? await canMessageDirect(viewer!.id, profile.id) : false;
+  const otherViewer = !!viewer && viewer.id !== profile.id;
+  const iBlocked = otherViewer ? await hasBlocked(viewer!.id, profile.id) : false;
+  const blocked = otherViewer ? await blockedBetween(viewer!.id, profile.id) : false;
   const contactDeclined = conversation?.status === "declined" && conversation.requested_by === viewer?.id && !direct;
 
   return (
@@ -144,7 +150,18 @@ export default async function PessoaPage({
               : "O contato aparece quando voces tiverem uma mentoria, um vinculo ou um projeto ativo."}
           </p>
         )}
-        {canContact && (
+        {otherViewer && (
+          <div className="mt-3 flex flex-wrap items-start gap-4">
+            <form action={blockUser}>
+              <input type="hidden" name="user_id" value={profile.id} />
+              <input type="hidden" name="return" value={ret} />
+              <button name="decision" value={iBlocked ? "unblock" : "block"} className="cursor-pointer text-xs text-muted hover:text-red-300">{iBlocked ? "Desbloquear" : "Bloquear"}</button>
+            </form>
+            <ReportForm type="user" id={profile.id} ret={ret} />
+          </div>
+        )}
+        {iBlocked && <p className="mt-2 text-xs text-muted">Voce bloqueou esta pessoa. Ela nao pode enviar mensagens, pedidos de contato nem convites para voce.</p>}
+        {canContact && !blocked && (
           <div className="mt-3">
             {contactDeclined ? (
               <Badge kind="pending" label="Pedido de contato nao aceito" />

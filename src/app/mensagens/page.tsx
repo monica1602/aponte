@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
-import { respondContactRequest, sendMessage } from "@/lib/actions";
+import { blockUser, respondContactRequest, sendMessage } from "@/lib/actions";
+import { blockedBetween, hasBlocked } from "@/lib/moderation";
+import { ReportForm } from "@/components/report-form";
 import {
   MESSAGE_MAX, canMessageDirect, conversationMessages, getConversation, listConversations, markConversationRead, messageTime, otherOf, type ConversationItem,
 } from "@/lib/messages";
@@ -49,6 +51,8 @@ export default async function MensagensPage({ searchParams }: { searchParams: Pr
   const messages = visible ? await conversationMessages(visible.id) : [];
   const otherId = visible ? otherOf(visible, user.id) : null;
   const other = otherId ? await getUser(otherId) : null;
+  const iBlocked = other ? await hasBlocked(user.id, other.id) : false;
+  const blocked = other ? await blockedBetween(user.id, other.id) : false;
   const incomingRequest = visible?.status === "requested" && visible.requested_by !== user.id;
   const direct = visible && otherId && visible.status !== "open" ? await canMessageDirect(user.id, otherId) : false;
   return (
@@ -83,6 +87,13 @@ export default async function MensagensPage({ searchParams }: { searchParams: Pr
                   {other ? (other.public_profile_consent ? <Link href={`/pessoas/${other.id}`} className="hover:underline">{other.name}</Link> : other.name) : "Conta excluida"}
                 </h2>
                 {visible.status === "requested" && <Badge kind="pending" label="Pedido de contato" />}
+                {other && (
+                  <form action={blockUser}>
+                    <input type="hidden" name="user_id" value={other.id} />
+                    <input type="hidden" name="return" value={`/mensagens?c=${visible.id}`} />
+                    <button name="decision" value={iBlocked ? "unblock" : "block"} className="cursor-pointer text-xs text-muted hover:text-red-300">{iBlocked ? "Desbloquear" : "Bloquear"}</button>
+                  </form>
+                )}
               </div>
               <ol aria-label="Mensagens" className="space-y-3">
                 {messages.map((m) => {
@@ -96,6 +107,7 @@ export default async function MensagensPage({ searchParams }: { searchParams: Pr
                         <p className="mt-1 text-[11px] text-muted">
                           {messageTime(m.created_at)}{mine && (m.read_at ? ` · Lida em ${messageTime(m.read_at)}` : " · Nao lida")}
                         </p>
+                        {!mine && m.body !== null && <div className="mt-1"><ReportForm type="message" id={m.id} ret={`/mensagens?c=${visible.id}`} label="Denunciar mensagem" /></div>}
                       </div>
                     </li>
                   );
@@ -103,6 +115,8 @@ export default async function MensagensPage({ searchParams }: { searchParams: Pr
               </ol>
               {!other ? (
                 <p className="text-sm text-muted">Esta conta foi excluida. Nao e possivel enviar mensagens.</p>
+              ) : blocked ? (
+                <p className="border-t border-line pt-3 text-sm text-muted">{iBlocked ? "Voce bloqueou esta pessoa. Desbloqueie para voltar a conversar." : "Nao e possivel enviar mensagens nesta conversa."}</p>
               ) : incomingRequest ? (
                 <div className="space-y-2 border-t border-line pt-3">
                   <p className="text-sm text-muted">{other.name} pediu contato com voce. Se aceitar, voces podem conversar por aqui. O seu e-mail continua oculto.</p>
@@ -121,7 +135,7 @@ export default async function MensagensPage({ searchParams }: { searchParams: Pr
                   <input type="hidden" name="conversation_id" value={visible.id} />
                   <textarea name="body" required rows={3} maxLength={MESSAGE_MAX} aria-label="Mensagem" placeholder="Escreva sua mensagem" className={inputCls} />
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted">Ate {MESSAGE_MAX} caracteres. A administracao nao le as mensagens.</span>
+                    <span className="text-xs text-muted">Ate {MESSAGE_MAX} caracteres. A administracao nao le as conversas; ve so uma mensagem que for denunciada.</span>
                     <button className={btnCls}>Enviar</button>
                   </div>
                 </form>

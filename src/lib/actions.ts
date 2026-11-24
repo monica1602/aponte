@@ -28,6 +28,7 @@ import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
+import { REPORT_LIMIT, REPORT_REASONS, blockedBetween, reportProblem, type ReportOutcome, type ReportTarget } from "./moderation";
 import { eventHasHistory } from "./event-history";
 import { validCertificateTheme } from "./certificate-themes";
 import { recordCertificateHistory, workloadMinutes } from "./certificates";
@@ -245,6 +246,9 @@ export async function login(formData: FormData) {
   }
   if (user!.account_status === "disputed") {
     back(loginPage, "error", "Esta conta foi desativada porque o dono do e-mail informou que nao criou o cadastro. Fale com o administrador.");
+  }
+  if (user!.account_status === "suspended") {
+    back(loginPage, "error", "Esta conta foi suspensa pela administracao por descumprir o Codigo de Conduta. Fale com o administrador.");
   }
   if (!user!.must_change_password && passwordProblem(password)) {
     await getDb().prepare("UPDATE users SET must_change_password = 1 WHERE id = ?").run(user!.id);
@@ -464,6 +468,7 @@ export async function requestMentorship(formData: FormData) {
     .prepare("SELECT id FROM users WHERE id = ? AND role IN ('mentor','company') AND account_status = 'active'")
     .get(mentorId);
   if (!mentor) back(ret, "error", "Mentor nao encontrado.");
+  if (await blockedBetween(user.id, mentorId)) back(ret, "error", "Nao e possivel enviar este pedido para esta pessoa.");
   try {
     await getDb()
       .prepare("INSERT INTO mentorships (mentor_id, mentee_id, objective, message) VALUES (?,?,?,?)")
@@ -511,6 +516,7 @@ export async function inviteMentee(formData: FormData) {
     .prepare("SELECT id FROM users WHERE id = ? AND role = 'mentee' AND account_status = 'active'")
     .get(menteeId);
   if (!mentee) back(ret, "error", "Mentorado nao encontrado.");
+  if (await blockedBetween(user.id, menteeId)) back(ret, "error", "Nao e possivel enviar este convite para esta pessoa.");
   try {
     await getDb()
       .prepare("INSERT INTO mentorships (mentor_id, mentee_id, objective, message, requested_by) VALUES (?,?,?,?, 'mentor')")
@@ -558,6 +564,7 @@ export async function inviteToCompany(formData: FormData) {
     .prepare("SELECT id, role FROM users WHERE id = ? AND role IN ('mentor','mentee') AND account_status = 'active'")
     .get(memberId)) as { id: number; role: string } | undefined;
   if (!member) back(ret, "error", "Pessoa nao encontrada.");
+  if (await blockedBetween(user.id, memberId)) back(ret, "error", "Nao e possivel enviar este convite para esta pessoa.");
   try {
     await getDb()
       .prepare("INSERT INTO company_links (company_id, member_id, message) VALUES (?,?,?)")
@@ -1653,6 +1660,7 @@ export async function sendMessage(formData: FormData) {
     if (!(await db.prepare("SELECT 1 FROM users WHERE id = ? AND account_status = 'active'").get(toId))) back("/mensagens", "error", "Pessoa nao encontrada.");
     c = await conversationBetween(user.id, toId);
   }
+  if (await blockedBetween(user.id, toId)) back(ret, "error", "Nao e possivel enviar mensagens para esta pessoa.");
   const direct = await canMessageDirect(user.id, toId);
   let status: "open" | "requested" = "open";
   if (!c) {
@@ -1689,4 +1697,109 @@ export async function respondContactRequest(formData: FormData) {
   }
   await getDb().prepare("UPDATE conversations SET status = 'declined' WHERE id = ? AND status = 'requested'").run(id);
   back("/mensagens", "msg", "Pedido de contato recusado.");
+}
+
+const REPORT_RETURN = /^\/(pessoas|projetos|eventos)\/\d+$|^\/mensagens(\?c=\d+)?$/;
+
+export async function submitReport(formData: FormData) {
+  const user = await me();
+  const ret = REPORT_RETURN.test(str(formData, "return")) ? str(formData, "return") : "/dashboard";
+  const type = str(formData, "target_type") as ReportTarget;
+  const targetId = Number(formData.get("target_id")) || 0;
+  const reason = str(formData, "reason");
+  const details = String(formData.get("details") ?? "").trim();
+  const problem = reportProblem(reason, details);
+  if (problem) back(ret, "error", problem);
+  const limit = { action: "report", subject: `user:${user.id}`, ...REPORT_LIMIT };
+  const wait = await blockedFor([limit]);
+  if (wait) back(ret, "error", tooManyMessage(wait));
+  const db = getDb();
+  let target: { user_id: number | null; label: string; body?: string | null } | undefined;
+  if (type === "user") {
+    target = (await db.prepare("SELECT id AS user_id, name AS label FROM users WHERE id = ?").get(targetId)) as typeof target;
+  } else if (type === "message") {
+    target = (await db.prepare(
+      `SELECT m.sender_id AS user_id, COALESCE(u.name, 'Conta excluida') AS label, m.body FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id LEFT JOIN users u ON u.id = m.sender_id
+       WHERE m.id = ? AND (c.user_a = ? OR c.user_b = ?) AND (m.sender_id IS NULL OR m.sender_id <> ?) AND m.body IS NOT NULL`
+    ).get(targetId, user.id, user.id, user.id)) as typeof target;
+  } else if (type === "project") {
+    target = (await db.prepare("SELECT owner_id AS user_id, title AS label FROM projects WHERE id = ?").get(targetId)) as typeof target;
+  } else if (type === "event") {
+    target = (await db.prepare("SELECT owner_id AS user_id, title AS label FROM events WHERE id = ?").get(targetId)) as typeof target;
+  }
+  if (!target) back(ret, "error", "Nao encontramos o que voce quer denunciar.");
+  if (target!.user_id === user.id) back(ret, "error", "Voce nao pode denunciar a si mesmo.");
+  await db.prepare(
+    "INSERT INTO reports (reporter_id, target_type, target_id, target_user_id, target_label, message_body, reason, details) VALUES (?,?,?,?,?,?,?,?)"
+  ).run(user.id, type, targetId, target!.user_id, target!.label, type === "message" ? target!.body ?? null : null, reason, details);
+  await recordAttempt("report", [limit.subject]);
+  const row = (await db.prepare("SELECT MAX(id) AS id FROM reports WHERE reporter_id = ?").get(user.id)) as { id: number };
+  await audit(user.id, "report.created", "report", row.id);
+  await alertAdmin(`Nova denuncia: ${REPORT_REASONS[reason as keyof typeof REPORT_REASONS]}`);
+  back(ret, "msg", "Denuncia enviada. A administracao vai analisar, e a pessoa nao fica sabendo quem denunciou.");
+}
+
+export async function blockUser(formData: FormData) {
+  const user = await me();
+  const targetId = Number(formData.get("user_id")) || 0;
+  const ret = REPORT_RETURN.test(str(formData, "return")) || str(formData, "return") === "/meus-dados" ? str(formData, "return") : "/meus-dados";
+  if (targetId === user.id) back(ret, "error", "Voce nao pode bloquear a si mesmo.");
+  if (!(await getDb().prepare("SELECT 1 FROM users WHERE id = ?").get(targetId))) back(ret, "error", "Pessoa nao encontrada.");
+  if (str(formData, "decision") === "unblock") {
+    await getDb().prepare("DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?").run(user.id, targetId);
+    await audit(user.id, "user.unblocked", "user", targetId);
+    back(ret, "msg", "Pessoa desbloqueada.");
+  }
+  if (!(await getDb().prepare("SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?").get(user.id, targetId))) {
+    await getDb().prepare("INSERT INTO user_blocks (blocker_id, blocked_id) VALUES (?,?)").run(user.id, targetId);
+    await audit(user.id, "user.blocked", "user", targetId);
+  }
+  back(ret, "msg", "Pessoa bloqueada. Ela nao pode mais enviar mensagens, pedidos de contato nem convites para voce, e nao e avisada.");
+}
+
+export async function adminReviewReport(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("report_id"));
+  await getDb().prepare("UPDATE reports SET status = 'reviewing' WHERE id = ? AND status = 'open'").run(id);
+  await audit(null, "report.reviewing", "report", id);
+  back("/admin/denuncias", "msg", "Denuncia marcada como em analise.");
+}
+
+export async function adminCloseReport(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("report_id"));
+  const outcome = str(formData, "outcome") as ReportOutcome;
+  const note = String(formData.get("note") ?? "").trim().slice(0, 1000);
+  if (!["archived", "warned", "suspended"].includes(outcome)) back("/admin/denuncias", "error", "Escolha a medida.");
+  const db = getDb();
+  const r = (await db.prepare("SELECT * FROM reports WHERE id = ? AND status <> 'closed'").get(id)) as
+    { id: number; reporter_id: number | null; target_user_id: number | null } | undefined;
+  if (!r) back("/admin/denuncias", "error", "Denuncia nao encontrada ou ja concluida.");
+  if (outcome !== "archived" && !r!.target_user_id) back("/admin/denuncias", "error", "A conta denunciada nao existe mais. Arquive a denuncia.");
+  await db.prepare("UPDATE reports SET status = 'closed', outcome = ?, admin_note = ?, closed_at = datetime('now') WHERE id = ?").run(outcome, note, id);
+  const target = r!.target_user_id;
+  if (outcome === "warned" && target) {
+    const text = "Voce recebeu uma advertencia da administracao da Ponte por uma conduta que descumpre o Codigo de Conduta. Leia o Codigo de Conduta e siga as regras da comunidade.";
+    await notify(target, text, "/conduta");
+    await emailUser(target, "Advertencia da administracao da Ponte", text, "Ler o Codigo de Conduta", "/conduta", "essential");
+  }
+  if (outcome === "suspended" && target) {
+    await db.prepare("UPDATE users SET account_status = 'suspended' WHERE id = ? AND account_status = 'active'").run(target);
+    await db.prepare("DELETE FROM sessions WHERE user_id = ?").run(target);
+    await emailUser(target, "Sua conta na Ponte foi suspensa", "Sua conta foi suspensa pela administracao da Ponte por descumprir o Codigo de Conduta. Enquanto ela estiver suspensa, voce nao consegue entrar. Se quiser contestar, fale com o administrador.", "Ler o Codigo de Conduta", "/conduta", "essential");
+  }
+  if (r!.reporter_id) await notify(r!.reporter_id, "A administracao analisou e concluiu a sua denuncia. Obrigada por ajudar a cuidar da comunidade.", "/dashboard");
+  await audit(null, `report.closed ${outcome}`, "report", id);
+  back("/admin/denuncias", "msg", "Denuncia concluida.");
+}
+
+export async function adminUnsuspendUser(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("user_id"));
+  const done = await getDb().prepare("UPDATE users SET account_status = 'active' WHERE id = ? AND account_status = 'suspended'").run(id);
+  if (!done.changes) back("/admin/denuncias", "error", "Esta conta nao esta suspensa.");
+  await audit(null, "user.unsuspended", "user", id);
+  await emailUser(id, "Sua conta na Ponte foi reativada", "A administracao desfez a suspensao da sua conta. Voce ja pode entrar de novo.", "Entrar", "/login", "essential");
+  back("/admin/denuncias", "msg", "Suspensao desfeita. A pessoa pode entrar de novo.");
 }
