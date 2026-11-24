@@ -1,3 +1,4 @@
+import { log, errorFields } from "./log";
 import crypto from "node:crypto";
 import { getDb } from "./db";
 import { hashToken } from "./reset-token";
@@ -62,7 +63,7 @@ export async function sendVerificationEmail(
   const no = `${yes}&r=nao`;
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    console.warn(`[verificar-email] RESEND_API_KEY ausente; link para ${to}: ${yes}`);
+    log("warn", "verificar-email", `RESEND_API_KEY ausente; link para ${to}: ${yes}`);
     return false;
   }
   const safeName = name.replace(/[<>&"]/g, "");
@@ -79,10 +80,10 @@ export async function sendVerificationEmail(
       }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) console.error(`[verificar-email] Resend respondeu ${res.status}: ${await res.text()}`);
+    if (!res.ok) log("error", "verificar-email", `Resend respondeu ${res.status}: ${await res.text()}`);
     return res.ok;
   } catch (e) {
-    console.warn("[verificar-email] falha ao enviar:", (e as Error).message);
+    log("warn", "verificar-email", "Falha ao enviar.", errorFields(e));
     return false;
   }
 }

@@ -1,3 +1,4 @@
+import { log, errorFields } from "./log";
 import { after } from "next/server";
 import { headers } from "next/headers";
 import { getDb } from "./db";
@@ -53,9 +54,9 @@ export async function emailUser(userId: number, subject: string, text: string, b
         }),
         signal: AbortSignal.timeout(10_000),
       });
-      if (!res.ok) console.warn(`[email-usuario] Resend respondeu ${res.status}`);
+      if (!res.ok) log("warn", "email-usuario", `Resend respondeu ${res.status}`);
     } catch (e) {
-      console.warn("[email-usuario] falha ao enviar:", (e as Error).message);
+      log("warn", "email-usuario", "Falha ao enviar.", errorFields(e));
     }
   });
 }

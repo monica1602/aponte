@@ -1,0 +1,68 @@
+name: Disponibilidade do site
+
+# A cada 15 minutos abre /api/saude. Se falhar 2 vezes seguidas (1 minuto entre elas), abre um aviso (issue)
+# atribuido a dona do repositorio; quando o site volta, comenta e fecha o aviso sozinho.
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: disponibilidade
+  cancel-in-progress: false
+
+env:
+  SITE_URL: https://aponte-eight.vercel.app
+  TITULO: Site fora do ar
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Abrir /api/saude (2 tentativas)
+        id: saude
+        run: |
+          check() {
+            code=$(curl -s -o saude.json -w '%{http_code}' --max-time 20 "$SITE_URL/api/saude" || true)
+            [ "$code" = 200 ] && grep -q '"status":"ok"' saude.json && return 0
+            echo "Tentativa falhou: HTTP ${code:-000}"
+            return 1
+          }
+          if check || { sleep 60; check; }; then
+            echo "no_ar=true" >> "$GITHUB_OUTPUT"
+            echo "Site no ar."
+          else
+            echo "no_ar=false" >> "$GITHUB_OUTPUT"
+            echo "codigo=${code:-000}" >> "$GITHUB_OUTPUT"
+            echo "::warning::Site fora do ar: $SITE_URL/api/saude falhou 2 vezes seguidas."
+          fi
+
+      - name: Abrir ou fechar o aviso
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NO_AR: ${{ steps.saude.outputs.no_ar }}
+          CODIGO: ${{ steps.saude.outputs.codigo }}
+        run: |
+          aberto=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --limit 100 --json number,title \
+            --jq ".[] | select(.title == \"$TITULO\") | .number" | head -n 1)
+          agora=$(TZ=America/Sao_Paulo date '+%d/%m/%Y %H:%M')
+          if [ "$NO_AR" = true ]; then
+            if [ -n "$aberto" ]; then
+              gh issue close "$aberto" -R "$GITHUB_REPOSITORY" --comment "O site voltou a responder em $agora (Brasilia). Aviso fechado automaticamente."
+              echo "Aviso #$aberto fechado."
+            fi
+          elif [ -z "$aberto" ]; then
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$TITULO" --assignee "$GITHUB_REPOSITORY_OWNER" --body \
+              "A checagem de $SITE_URL/api/saude falhou 2 vezes seguidas, com 1 minuto de intervalo, em $agora (Brasilia). Resposta: HTTP $CODIGO (000 = sem resposta; 503 = banco sem responder).
+
+          A checagem roda a cada 15 minutos. Este aviso e fechado sozinho quando o site voltar.
+
+          Detalhes: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          else
+            echo "Aviso #$aberto continua aberto."
+          fi

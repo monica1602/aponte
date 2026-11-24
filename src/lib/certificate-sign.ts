@@ -1,3 +1,4 @@
+import { log, errorFields } from "./log";
 import { PDFDocument } from "pdf-lib";
 import { SignPdf } from "@signpdf/signpdf";
 import { P12Signer } from "@signpdf/signer-p12";
@@ -27,7 +28,7 @@ export async function signCertificatePdf(pdf: Uint8Array, contactInfo: string): 
     const unsigned = Buffer.from(await doc.save({ useObjectStreams: false }));
     return await new SignPdf().sign(unsigned, new P12Signer(key.p12, { passphrase: key.passphrase }));
   } catch (error) {
-    console.error("Falha ao assinar o certificado; o PDF segue sem assinatura.", error);
+    log("error", "certificado", "Falha ao assinar o certificado; o PDF segue sem assinatura.", errorFields(error));
     return pdf;
   }
 }

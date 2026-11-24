@@ -1,3 +1,4 @@
+import { log, errorFields } from "./log";
 import { after } from "next/server";
 import { headers } from "next/headers";
 import { sendWhatsApp, whatsappConfig } from "./whatsapp";
@@ -27,7 +28,20 @@ async function sendAdminEmail(to: string, text: string, link: string): Promise<v
     }),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) console.warn(`[aviso-admin] Resend respondeu ${res.status}`);
+  if (!res.ok) log("warn", "aviso-admin", `Resend respondeu ${res.status}`);
+}
+
+/** Envia o aviso agora (WhatsApp e/ou e-mail) e espera terminar. Nunca lanca erro. */
+export async function sendAdminAlert(text: string, link: string): Promise<boolean> {
+  const wa = whatsappConfig();
+  const email = (process.env.ADMIN_ALERT_EMAIL ?? "").trim();
+  const jobs: Promise<unknown>[] = [];
+  if (wa) jobs.push(sendWhatsApp(wa, `Ponte: ${text}\nVer: ${link}`));
+  if (email && process.env.RESEND_API_KEY) jobs.push(sendAdminEmail(email, text, link));
+  for (const r of await Promise.allSettled(jobs)) {
+    if (r.status === "rejected") log("warn", "aviso-admin", "Falha ao enviar.", errorFields(r.reason));
+  }
+  return jobs.length > 0;
 }
 
 /** Avisa o administrador (WhatsApp e/ou e-mail) sem atrasar a resposta. Envia so nomes, nunca e-mails ou dados pessoais. */
@@ -36,12 +50,5 @@ export async function alertAdmin(text: string): Promise<void> {
   const email = (process.env.ADMIN_ALERT_EMAIL ?? "").trim();
   if (!wa && !(email && process.env.RESEND_API_KEY)) return;
   const link = await adminUrl();
-  after(async () => {
-    const jobs: Promise<unknown>[] = [];
-    if (wa) jobs.push(sendWhatsApp(wa, `Ponte: ${text}\nVer: ${link}`));
-    if (email) jobs.push(sendAdminEmail(email, text, link));
-    for (const r of await Promise.allSettled(jobs)) {
-      if (r.status === "rejected") console.warn("[aviso-admin] falha ao enviar:", (r.reason as Error)?.message);
-    }
-  });
+  after(() => sendAdminAlert(text, link).then(() => undefined));
 }

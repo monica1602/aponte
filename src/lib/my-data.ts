@@ -1,3 +1,4 @@
+import { log, errorFields } from "./log";
 import crypto from "node:crypto";
 import { getDb } from "./db";
 import { hashToken } from "./reset-token";
@@ -260,7 +261,7 @@ const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 export async function sendPlainEmail(to: string, subject: string, paragraphs: string[], button?: { label: string; link: string }): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    console.warn(`[meus-dados] RESEND_API_KEY ausente; e-mail para ${to}: ${subject}${button ? ` ${button.link}` : ""}`);
+    log("warn", "meus-dados", `RESEND_API_KEY ausente; e-mail para ${to}: ${subject}${button ? ` ${button.link}` : ""}`);
     return false;
   }
   const html = `<div style="background:#f4f6fb;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;color:#0c1720">
@@ -288,10 +289,10 @@ export async function sendPlainEmail(to: string, subject: string, paragraphs: st
       }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) console.warn(`[meus-dados] Resend respondeu ${res.status}`);
+    if (!res.ok) log("warn", "meus-dados", `Resend respondeu ${res.status}`);
     return res.ok;
   } catch (e) {
-    console.warn("[meus-dados] falha ao enviar:", (e as Error).message);
+    log("warn", "meus-dados", "Falha ao enviar.", errorFields(e));
     return false;
   }
 }

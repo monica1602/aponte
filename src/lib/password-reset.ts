@@ -1,5 +1,6 @@
 "use server";
 
+import { log } from "./log";
 import crypto from "node:crypto";
 import { passwordProblem } from "./password-policy";
 import { headers } from "next/headers";
@@ -42,7 +43,7 @@ function resetEmailHtml(name: string, link: string): string {
 async function sendResetEmail(to: string, name: string, link: string): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
-    console.warn(`[redefinir-senha] RESEND_API_KEY ausente; link para ${to}: ${link}`);
+    log("warn", "redefinir-senha", `RESEND_API_KEY ausente; link para ${to}: ${link}`);
     return false;
   }
   const safeName = name.replace(/[<>&"]/g, "");
@@ -57,7 +58,7 @@ async function sendResetEmail(to: string, name: string, link: string): Promise<b
       text: `Ola, ${safeName}!\n\nRecebemos um pedido para alterar a senha da sua conta na Ponte. Se foi voce, confirme e crie a nova senha neste link (vale por 1 hora e so pode ser usado uma vez):\n${link}\n\nSe nao foi voce, ignore este e-mail: sua senha atual continua valendo.`,
     }),
   });
-  if (!res.ok) console.error(`[redefinir-senha] Resend respondeu ${res.status}: ${await res.text()}`);
+  if (!res.ok) log("error", "redefinir-senha", `Resend respondeu ${res.status}: ${await res.text()}`);
   return res.ok;
 }
 

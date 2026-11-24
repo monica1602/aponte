@@ -1,5 +1,6 @@
 // Small async SQL layer: SQLite (node:sqlite) locally, PostgreSQL when DATABASE_URL is set.
 // Queries are written once with `?` placeholders and SQLite-style datetime('now').
+import { log } from "./log";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
@@ -109,7 +110,7 @@ function postgresDriver(url: string): Driver {
         await client.query("BEGIN");
         await client.query("SET LOCAL lock_timeout = '15s'");
         locked = await client.query("SELECT pg_advisory_xact_lock(727002)").then(() => true, () => false);
-        if (!locked) console.warn("withLock: lock_timeout, continuing without the lock");
+        if (!locked) log("warn", "banco", "withLock: lock_timeout, continuing without the lock");
         return await fn();
       } finally {
         await client.query(locked ? "COMMIT" : "ROLLBACK").catch(() => {});

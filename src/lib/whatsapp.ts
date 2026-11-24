@@ -1,3 +1,5 @@
+import { log } from "./log";
+
 export type WhatsAppConfig = { phone: string; apiKey: string; apiUrl: string };
 
 export function whatsappConfig(env: NodeJS.ProcessEnv = process.env): WhatsAppConfig | null {
@@ -17,6 +19,6 @@ export function whatsappRequestUrl(cfg: WhatsAppConfig, text: string): string {
 
 export async function sendWhatsApp(cfg: WhatsAppConfig, text: string): Promise<boolean> {
   const res = await fetch(whatsappRequestUrl(cfg, text), { signal: AbortSignal.timeout(10_000) });
-  if (!res.ok) console.warn(`[whatsapp] CallMeBot respondeu ${res.status}`);
+  if (!res.ok) log("warn", "whatsapp", `CallMeBot respondeu ${res.status}`);
   return res.ok;
 }

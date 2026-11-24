@@ -1,3 +1,4 @@
+import { log, errorFields } from "./log";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import fontkit from "@pdf-lib/fontkit";
@@ -124,7 +125,7 @@ export async function certificatePdf(c: CertificateData, validationUrl: string):
         page.drawText(signature, { x: (width - cursive.widthOfTextAtSize(signature, size)) / 2, y: y + 7, size, font: cursive, color: ink });
       } catch (error) {
         signatureFont = undefined;
-        console.error("Falha ao desenhar a assinatura do certificado.", error);
+        log("error", "certificado", "Falha ao desenhar a assinatura do certificado.", errorFields(error));
       }
     }
     page.drawLine({ start: { x: width / 2 - 120, y }, end: { x: width / 2 + 120, y }, thickness: 0.75, color: muted });

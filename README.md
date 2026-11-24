@@ -426,6 +426,14 @@ O banco atual nunca e sobrescrito: a copia vai para um banco novo e so depois o 
 
 Atualize `BACKUP_PASSPHRASE`. As copias anteriores continuam abrindo so com a senha antiga ate vencerem (30 dias), entao guarde as duas durante esse periodo.
 
+## Monitoramento, logs e disponibilidade
+
+- **Logs estruturados:** as mensagens do servidor saem em 1 linha JSON (`ts`, `nivel`, `area`, `msg` e campos extras), por `src/lib/log.ts`. E-mails, links com query string, credenciais em URLs, tokens e campos como `senha`/`token` sao mascarados antes de gravar. No Vercel, veja em **Logs** e filtre por `"area":"servidor"`, por exemplo.
+- **Erros do servidor:** `src/instrumentation.ts` recebe todo erro de pagina, rota, formulario (server action) ou proxy. O erro vira um log `"area":"servidor"` com o metodo, o caminho sem query, a rota do arquivo e o `digest`, e a administracao e avisada pelos canais de `ADMIN_WHATSAPP`/`CALLMEBOT_API_KEY` e/ou `ADMIN_ALERT_EMAIL`. No maximo 1 aviso por tipo de erro (rota + classe do erro) a cada hora. O `digest` aparece tambem na tela de erro como "Codigo do erro", para achar o log certo.
+- **Telas de erro:** `src/app/error.tsx` e `src/app/global-error.tsx`, em portugues, com "Tentar de novo" e "Voltar ao inicio".
+- **Saude:** `GET /api/saude` responde `{"status":"ok","banco":"ok"}` (200) quando o site e o banco funcionam e `{"status":"erro","banco":"erro"}` (503) quando o banco nao responde em 8 s. Nao mostra dados.
+- **Disponibilidade:** o workflow `.github/workflows/disponibilidade.yml` abre `/api/saude` a cada 15 minutos. Se falhar 2 vezes seguidas, com 1 minuto entre elas, abre a issue "Site fora do ar" atribuida a dona do repositorio, e o GitHub manda e-mail. Quando o site volta, a issue e comentada e fechada sozinha. Requer **Issues** ligadas em Settings → General → Features. Para checar outro endereco, troque `SITE_URL` no workflow. O GitHub pode atrasar execucoes agendadas em alguns minutos.
+
 ## Deploy (Docker — Railway, Render, Fly.io, VPS)
 
 ```bash
