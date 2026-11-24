@@ -1,12 +1,32 @@
-import { getDb } from "@/lib/db";
+import { getDb, notify } from "@/lib/db";
 import { emailUser } from "@/lib/user-email";
 import { runRetention } from "@/lib/retention";
+import { eventReviewOpen } from "@/lib/reviews";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Eventos guardam "AAAA-MM-DDTHH:MM" no horario de Brasilia (UTC-3, sem horario de verao).
 function eventEndMs(endsAt: string): number {
   return Date.parse(`${endsAt.slice(0, 16)}:00-03:00`);
+}
+
+/** Convida quem fez check-in a avaliar o evento, uma vez, quando ele termina. */
+async function inviteEventReviews(): Promise<number> {
+  const db = getDb();
+  const events = (await db.prepare("SELECT id, title, ends_at FROM events WHERE status = 'published' AND review_invited_at IS NULL").all()) as { id: number; title: string; ends_at: string }[];
+  let invited = 0;
+  for (const e of events) {
+    if (!eventReviewOpen(e.ends_at)) continue;
+    const marked = await db.prepare("UPDATE events SET review_invited_at = datetime('now') WHERE id = ? AND review_invited_at IS NULL").run(e.id);
+    if (!marked.changes) continue;
+    const people = (await db.prepare("SELECT user_id FROM event_registrations WHERE event_id = ? AND status = 'approved' AND checked_in_at IS NOT NULL").all(e.id)) as { user_id: number }[];
+    for (const p of people) {
+      await notify(p.user_id, `Como foi o evento "${e.title}"? Deixe sua avaliacao ate 30 dias depois do fim.`, `/avaliar?evento=${e.id}`);
+      await emailUser(p.user_id, `Avalie o evento "${e.title}"`, `Voce participou do evento "${e.title}". Conte como foi: a avaliacao leva 1 minuto e ajuda a organizacao a melhorar. Ela fica aberta por 30 dias.`, "Avaliar o evento", `/avaliar?evento=${e.id}`, "network");
+      invited++;
+    }
+  }
+  return invited;
 }
 
 /** Chamado pelo Cron da Vercel 1 vez por dia: lembra quem fez check-in e nao confirmou a chegada 24 h apos o fim do evento. */
@@ -16,7 +36,8 @@ export async function GET(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
   const retention = await runRetention();
-  if (!process.env.RESEND_API_KEY) return Response.json({ sent: 0, skipped: "RESEND_API_KEY ausente", retention });
+  const reviewInvites = await inviteEventReviews();
+  if (!process.env.RESEND_API_KEY) return Response.json({ sent: 0, skipped: "RESEND_API_KEY ausente", retention, reviewInvites });
 
   const db = getDb();
   const rows = (await db.prepare(
@@ -44,5 +65,5 @@ export async function GET(request: Request) {
     );
     sent++;
   }
-  return Response.json({ sent, retention });
+  return Response.json({ sent, retention, reviewInvites });
 }

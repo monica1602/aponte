@@ -63,6 +63,7 @@ export const MY_DATA_SECTIONS = {
   mensagens: "Mensagens",
   pessoas_bloqueadas: "Pessoas bloqueadas",
   denuncias_feitas: "Denuncias feitas",
+  avaliacoes_feitas: "Avaliacoes feitas",
   notificacoes: "Notificacoes",
   pedidos_sobre_dados: "Pedidos sobre seus dados",
   registro_de_acoes: "Registro das suas acoes (auditoria)",
@@ -176,6 +177,10 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
     ),
     pessoas_bloqueadas: await all("SELECT u.name AS pessoa, b.created_at FROM user_blocks b JOIN users u ON u.id = b.blocked_id WHERE b.blocker_id = ? ORDER BY b.created_at"),
     denuncias_feitas: await all("SELECT target_type AS tipo, target_label AS denunciado, reason AS motivo, details AS descricao, status AS situacao, created_at, closed_at FROM reports WHERE reporter_id = ? ORDER BY created_at"),
+    avaliacoes_feitas: await all(
+      `SELECT r.kind AS tipo, COALESCE(e.title, s.name, '') AS avaliado, r.rating AS nota, r.comment AS comentario, r.as_agreed AS encontros_como_combinado, r.recommend AS recomendaria, r.created_at, r.updated_at
+       FROM reviews r LEFT JOIN events e ON e.id = r.event_id LEFT JOIN users s ON s.id = r.subject_id WHERE r.author_id = ? ORDER BY r.created_at`
+    ),
     notificacoes: await all("SELECT body, link, read_at, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC"),
     pedidos_sobre_dados: await all("SELECT kind, message, status, response, created_at, answered_at FROM data_requests WHERE user_id = ? ORDER BY created_at DESC"),
     registro_de_acoes: await all("SELECT action, entity_type, created_at FROM audit_log WHERE actor_id = ? ORDER BY created_at DESC"),

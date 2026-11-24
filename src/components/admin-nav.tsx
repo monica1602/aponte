@@ -10,6 +10,7 @@ const ITEMS = [
   { href: "/admin/certificados", label: "Certificados" },
   { href: "/admin/cadastros", label: "Cadastros e convites" },
   { href: "/admin/denuncias", label: "Denuncias" },
+  { href: "/admin/avaliacoes", label: "Avaliacoes" },
   { href: "/admin/pedidos", label: "Pedidos LGPD" },
   { href: "/admin/seguranca", label: "Seguranca" },
 ];

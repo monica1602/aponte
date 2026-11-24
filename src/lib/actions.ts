@@ -28,6 +28,7 @@ import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
+import { eventReviewTarget, mentorshipReviewTarget, myReview, reviewProblem } from "./reviews";
 import { REPORT_LIMIT, REPORT_REASONS, blockedBetween, reportProblem, type ReportOutcome, type ReportTarget } from "./moderation";
 import { eventHasHistory } from "./event-history";
 import { validCertificateTheme } from "./certificate-themes";
@@ -605,6 +606,9 @@ export async function respondCompanyInvite(formData: FormData) {
 export async function removeMentorship(formData: FormData) {
   const user = await me();
   const id = Number(formData.get("id"));
+  if (!formData.get("skip_review") && (await mentorshipReviewTarget(user.id, id)) && !(await myReview(user.id, "mentorship", id))) {
+    redirect(`/avaliar?mentoria=${id}&encerrar=1`);
+  }
   await getDb()
     .prepare("DELETE FROM mentorships WHERE id = ? AND (mentor_id = ? OR mentee_id = ?)")
     .run(id, user.id, user.id);
@@ -1802,4 +1806,64 @@ export async function adminUnsuspendUser(formData: FormData) {
   await audit(null, "user.unsuspended", "user", id);
   await emailUser(id, "Sua conta na Ponte foi reativada", "A administracao desfez a suspensao da sua conta. Voce ja pode entrar de novo.", "Entrar", "/login", "essential");
   back("/admin/denuncias", "msg", "Suspensao desfeita. A pessoa pode entrar de novo.");
+}
+
+export async function submitReview(formData: FormData) {
+  const user = await me();
+  const kind = str(formData, "kind") === "event" ? "event" : "mentorship";
+  const targetId = Number(formData.get("target_id")) || 0;
+  const ending = kind === "mentorship" && str(formData, "encerrar") === "1";
+  const ret = `/avaliar?${kind === "event" ? "evento" : "mentoria"}=${targetId}${ending ? "&encerrar=1" : ""}`;
+  const rating = Number(formData.get("rating"));
+  const comment = String(formData.get("comment") ?? "").trim();
+  const sensitive = formData.get("sensitive") === "on";
+  const sensitiveText = sensitive ? String(formData.get("sensitive_text") ?? "").trim() : "";
+  const problem = reviewProblem(rating, comment, sensitive, sensitiveText);
+  if (problem) back(ret, "error", problem);
+  const yesNo = (k: string) => (str(formData, k) === "1" ? 1 : str(formData, k) === "0" ? 0 : null);
+  let subject: { id: number; role: string; label: string; reportType: ReportTarget; reportId: number };
+  if (kind === "mentorship") {
+    const t = await mentorshipReviewTarget(user.id, targetId);
+    if (!t) back("/dashboard", "error", "Esta mentoria ainda nao pode ser avaliada. A avaliacao abre depois do primeiro encontro concluido.");
+    subject = { id: t!.other_id, role: t!.other_side, label: t!.other_name, reportType: "user", reportId: t!.other_id };
+    if (yesNo("as_agreed") === null || yesNo("recommend") === null) back(ret, "error", "Responda as duas perguntas.");
+  } else {
+    const t = await eventReviewTarget(user.id, targetId);
+    if (!t) back(`/eventos/${targetId}`, "error", "A avaliacao e so para quem fez check-in, ate 30 dias depois do fim do evento.");
+    subject = { id: t!.owner_id, role: "organizer", label: t!.title, reportType: "event", reportId: t!.id };
+  }
+  const limit = { action: "report", subject: `user:${user.id}`, ...REPORT_LIMIT };
+  if (sensitive) {
+    const wait = await blockedFor([limit]);
+    if (wait) back(ret, "error", tooManyMessage(wait));
+  }
+  const db = getDb();
+  const existing = await myReview(user.id, kind, targetId);
+  const agreed = kind === "mentorship" ? yesNo("as_agreed") : null;
+  const recommend = kind === "mentorship" ? yesNo("recommend") : null;
+  if (existing) {
+    await db.prepare("UPDATE reviews SET rating = ?, comment = ?, as_agreed = ?, recommend = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(rating, comment, agreed, recommend, existing.id);
+    await audit(user.id, "review.updated", "review", existing.id);
+  } else {
+    const r = await db.prepare(
+      `INSERT INTO reviews (author_id, kind, ${kind === "event" ? "event_id" : "mentorship_id"}, subject_id, subject_role, rating, comment, as_agreed, recommend) VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(user.id, kind, targetId, subject!.id, subject!.role, rating, comment, agreed, recommend);
+    await audit(user.id, "review.created", "review", Number(r.lastInsertRowid));
+  }
+  if (sensitive) {
+    await db.prepare(
+      "INSERT INTO reports (reporter_id, target_type, target_id, target_user_id, target_label, reason, details, sensitive) VALUES (?,?,?,?,?,'relato_sensivel',?,1)"
+    ).run(user.id, subject!.reportType, subject!.reportId, subject!.id, subject!.label, sensitiveText);
+    await recordAttempt("report", [limit.subject]);
+    const row = (await db.prepare("SELECT MAX(id) AS id FROM reports WHERE reporter_id = ?").get(user.id)) as { id: number };
+    await audit(user.id, "report.created sensitive", "report", row.id);
+    await alertAdmin("Novo relato sensivel recebido numa avaliacao");
+  }
+  const note = sensitive ? " O relato sensivel foi enviado em sigilo para a administracao." : "";
+  if (ending) {
+    await db.prepare("DELETE FROM mentorships WHERE id = ? AND (mentor_id = ? OR mentee_id = ?)").run(targetId, user.id, user.id);
+    back("/dashboard", "msg", `Avaliacao enviada e conexao removida.${note}`);
+  }
+  back(kind === "event" ? `/eventos/${targetId}` : "/dashboard", "msg", `${existing ? "Avaliacao alterada." : "Avaliacao enviada."}${note}`);
 }

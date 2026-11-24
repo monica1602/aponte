@@ -11,6 +11,7 @@ export const RETENTION_DAYS = {
   certificateIssue: 365,
   messages: 730,
   reports: 730,
+  reviews: 730,
 };
 
 /** Certificados so podem ser emitidos ate 1 ano apos o fim do evento. */
@@ -50,7 +51,8 @@ export async function runRetention(now = Date.now()) {
   await db.prepare(`DELETE FROM messages WHERE conversation_id IN (${oldConversations})`).run(utcCutoff(RETENTION_DAYS.messages, now));
   const conversations = await db.prepare(`DELETE FROM conversations WHERE id IN (${oldConversations})`).run(utcCutoff(RETENTION_DAYS.messages, now));
   const reports = await db.prepare("DELETE FROM reports WHERE status = 'closed' AND closed_at < ?").run(utcCutoff(RETENTION_DAYS.reports, now));
-  const result = { audit: auditRows.changes, registrations: registrations.changes, safeHome: safeHome.changes, conversations: conversations.changes, reports: reports.changes };
-  await audit(null, `retention.cleanup auditoria=${result.audit} inscricoes=${result.registrations} chegada=${result.safeHome} conversas=${result.conversations} denuncias=${result.reports}`, "retention", null);
+  const reviews = await db.prepare("DELETE FROM reviews WHERE updated_at < ?").run(utcCutoff(RETENTION_DAYS.reviews, now));
+  const result = { audit: auditRows.changes, registrations: registrations.changes, safeHome: safeHome.changes, conversations: conversations.changes, reports: reports.changes, reviews: reviews.changes };
+  await audit(null, `retention.cleanup auditoria=${result.audit} inscricoes=${result.registrations} chegada=${result.safeHome} conversas=${result.conversations} denuncias=${result.reports} avaliacoes=${result.reviews}`, "retention", null);
   return result;
 }

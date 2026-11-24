@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { eventReviewOpen, mentorSummary } from "@/lib/reviews";
 import { PASSWORD_HINT } from "@/lib/password-policy";
 import { EVENT_CATEGORIES } from "@/lib/catalog";
 import { CERTIFICATE_THEMES, DEFAULT_CERTIFICATE_THEME } from "@/lib/certificate-themes";
@@ -52,6 +53,7 @@ type SP = { msg?: string; error?: string };
 
 type LinkRow = {
   mentorship_id: number;
+  can_review?: number;
   id: number;
   name: string;
   headline: string;
@@ -184,7 +186,7 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
               {r.certificate_id && r.certificate_code ? <CertificateRevoke id={r.certificate_id} code={r.certificate_code} revokedAt={r.certificate_revoked_at} reason={r.certificate_revoke_reason} returnTo="/dashboard" revoke={revokeCertificate} unrevoke={unrevokeCertificate} /> : r.checked_in_at && canIssueCertificate(r.ends_at) && <form action={issueCertificate}><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="recipient_id" value={r.participant_id} /><button className="text-accent hover:underline">emitir certificado</button></form>}
             </div>}</li>)}</ul>}
           </li>;
-        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p>{r.event_status === "cancelled" && <p className="mt-2 text-xs text-red-300">Evento cancelado pela organizacao.</p>}<PresenceActions r={r} returnTo="/dashboard" /><MyCertificate r={r} />{canCancelRegistration(r) && <CancelRegistration eventId={r.event_id} returnTo="/dashboard" label="Cancelar inscricao" className="mt-3" />}</li>)}</ul>
+        }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p>{r.event_status === "cancelled" && <p className="mt-2 text-xs text-red-300">Evento cancelado pela organizacao.</p>}<PresenceActions r={r} returnTo="/dashboard" /><MyCertificate r={r} />{r.status === "approved" && r.checked_in_at && r.event_status !== "cancelled" && eventReviewOpen(r.ends_at) && <Link href={`/avaliar?evento=${r.event_id}`} className="mt-2 inline-block text-xs text-accent hover:underline">Avaliar o evento</Link>}{canCancelRegistration(r) && <CancelRegistration eventId={r.event_id} returnTo="/dashboard" label="Cancelar inscricao" className="mt-3" />}</li>)}</ul>
       )}
     </Card>
   );
@@ -319,10 +321,13 @@ function NetworkList({ rows, title, empty }: { rows: LinkRow[]; title: string; e
                 </Link>
                 <p className="text-sm text-muted">{r.headline}</p>
               </div>
-              <form action={removeMentorship}>
-                <input type="hidden" name="id" value={r.mentorship_id} />
-                <button className="text-xs text-muted/60 hover:text-red-400">desconectar</button>
-              </form>
+              <div className="flex shrink-0 items-center gap-3">
+                {Number(r.can_review) > 0 && <Link href={`/avaliar?mentoria=${r.mentorship_id}`} className="text-xs text-accent hover:underline">avaliar mentoria</Link>}
+                <form action={removeMentorship}>
+                  <input type="hidden" name="id" value={r.mentorship_id} />
+                  <button className="text-xs text-muted/60 hover:text-red-400">desconectar</button>
+                </form>
+              </div>
             </li>
           ))}
         </ul>
@@ -345,7 +350,8 @@ export default async function DashboardPage({
   const links = await db
     .prepare(
       `SELECT m.id AS mentorship_id, m.status, m.mentor_id, m.mentee_id, m.requested_by,
-              u.id, u.name, u.headline, u.role, u.skills
+              u.id, u.name, u.headline, u.role, u.skills,
+              EXISTS(SELECT 1 FROM mentorship_meetings mm WHERE mm.mentorship_id = m.id AND mm.status = 'completed') AS can_review
        FROM mentorships m
        JOIN users u ON u.id = CASE WHEN m.mentor_id = ? THEN m.mentee_id ELSE m.mentor_id END
        WHERE (m.mentor_id = ? OR m.mentee_id = ?)`
@@ -394,6 +400,7 @@ export default async function DashboardPage({
   const sentPending = links.filter((l) => l.status === "pending" && !isMentorSide && l.requested_by !== "mentor");
   const network = links.filter((l) => l.status === "active");
   const meetings = await listMeetings(user.id);
+  const reviewSummary = isMentorSide ? await mentorSummary(user.id) : null;
 
   const myContribs =
     user.role === "mentee"
@@ -420,6 +427,16 @@ export default async function DashboardPage({
           {isMentorSide ? (
             <>
               <PendingRequests rows={incoming} />
+              {reviewSummary && (
+                <Card>
+                  <h2 className="font-semibold">Avaliacoes das suas mentorias</h2>
+                  {reviewSummary.avg === null ? (
+                    <p className="mt-1 text-sm text-muted">A media aparece quando houver pelo menos 3 avaliacoes de mentorados (agora: {reviewSummary.count}). Para proteger quem avalia, os comentarios nao aparecem.</p>
+                  ) : (
+                    <p className="mt-1 text-sm text-muted"><span className="text-lg font-semibold text-fg">{reviewSummary.avg.toLocaleString("pt-BR")} de 5</span> em {reviewSummary.count} avaliacoes · {reviewSummary.recommendPct}% recomendariam · {reviewSummary.agreedPct}% disseram que os encontros aconteceram como combinado. Os comentarios nao aparecem, para proteger quem avalia.</p>
+                  )}
+                </Card>
+              )}
               {user.role === "mentor" && <MenteeCreator />}
               <NetworkList
                 rows={network}

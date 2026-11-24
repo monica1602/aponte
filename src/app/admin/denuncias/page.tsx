@@ -40,7 +40,7 @@ export default async function AdminReportsPage({ searchParams }: { searchParams:
           {reports.map((r) => (
             <Card key={r.id} className="space-y-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-semibold">{REPORT_REASONS[r.reason] ?? r.reason} · {REPORT_TARGETS[r.target_type]}: <Target r={r} /></p>
+                <p className="font-semibold">{r.sensitive ? <span className="mr-2 rounded-full border border-red-400/40 bg-red-400/10 px-2 py-0.5 text-xs text-red-300">Relato sensivel</span> : null}{r.sensitive ? "Relato enviado numa avaliacao" : REPORT_REASONS[r.reason] ?? r.reason} · {REPORT_TARGETS[r.target_type]}: <Target r={r} /></p>
                 <Badge kind={r.status === "closed" ? "active" : "pending"} label={REPORT_STATUS[r.status]} />
               </div>
               <dl className="grid gap-1 text-muted sm:grid-cols-[160px_1fr]">

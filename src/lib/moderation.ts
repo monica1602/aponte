@@ -45,7 +45,7 @@ export type ReportRow = {
   id: number; reporter_id: number | null; reporter_name: string | null; target_type: ReportTarget; target_id: number;
   target_user_id: number | null; target_user_name: string | null; target_user_status: string | null; target_label: string;
   message_body: string | null; reason: ReportReason; details: string; status: keyof typeof REPORT_STATUS;
-  outcome: ReportOutcome | null; admin_note: string; created_at: string; closed_at: string | null;
+  outcome: ReportOutcome | null; admin_note: string; created_at: string; closed_at: string | null; sensitive: number;
 };
 
 export async function listReports(status: string): Promise<ReportRow[]> {
@@ -53,6 +53,6 @@ export async function listReports(status: string): Promise<ReportRow[]> {
   return (await getDb().prepare(
     `SELECT r.*, a.name AS reporter_name, t.name AS target_user_name, t.account_status AS target_user_status
      FROM reports r LEFT JOIN users a ON a.id = r.reporter_id LEFT JOIN users t ON t.id = r.target_user_id
-     ${where} ORDER BY CASE r.status WHEN 'open' THEN 0 WHEN 'reviewing' THEN 1 ELSE 2 END, r.created_at DESC, r.id DESC LIMIT 300`
+     ${where} ORDER BY CASE r.status WHEN 'open' THEN 0 WHEN 'reviewing' THEN 1 ELSE 2 END, r.sensitive DESC, r.created_at DESC, r.id DESC LIMIT 300`
   ).all(...(where ? [status] : []))) as unknown as ReportRow[];
 }

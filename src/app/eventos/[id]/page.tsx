@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { ReportForm } from "@/components/report-form";
+import { eventReviewTarget, eventSummary, myReview, REVIEW_MIN_SHOW } from "@/lib/reviews";
 import { getDb, type PlatformEvent } from "@/lib/db";
 import { deleteEvent, requestEventAccess, updateEventConsents } from "@/lib/actions";
 import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
@@ -48,6 +49,9 @@ export default async function EventoPage({
   const ret = `/eventos/${e.id}`;
   const showLink = e.online_url && registration === "approved" && !cancelledEvent;
 
+  const canReview = user ? !!(await eventReviewTarget(user.id, e.id)) : false;
+  const reviewed = canReview && user ? !!(await myReview(user.id, "event", e.id)) : false;
+  const summary = user?.id === e.owner_id ? await eventSummary(e.id) : null;
   return (
     <div className="mx-auto max-w-3xl py-10">
       <Link href="/eventos" className="text-sm text-muted hover:text-fg">← Eventos</Link>
@@ -76,6 +80,26 @@ export default async function EventoPage({
         <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: ret }} label="Excluir evento" className="mt-8">
           O evento e as inscricoes serao apagados. As pessoas inscritas recebem um aviso de cancelamento.
         </DeleteConfirm>
+      )}
+      {canReview && (
+        <Card className="mt-8">
+          <h2 className="font-semibold">Avaliar este evento</h2>
+          <p className="mt-1 text-sm text-muted">{reviewed ? "Voce ja avaliou este evento. Pode alterar a avaliacao ate 30 dias depois do fim." : "Voce participou deste evento. Conte como foi, ate 30 dias depois do fim."}</p>
+          <Link href={`/avaliar?evento=${e.id}`} className={`${btnSecondaryCls} mt-3`}>{reviewed ? "Alterar minha avaliacao" : "Avaliar o evento"}</Link>
+        </Card>
+      )}
+      {summary && (
+        <Card className="mt-8">
+          <h2 className="font-semibold">Avaliacoes do evento</h2>
+          {summary.avg === null ? (
+            <p className="mt-1 text-sm text-muted">O resultado aparece quando houver pelo menos {REVIEW_MIN_SHOW} avaliacoes (agora: {summary.count}). Os nomes de quem avaliou nunca aparecem.</p>
+          ) : (
+            <>
+              <p className="mt-1 text-sm text-muted"><span className="text-lg font-semibold text-fg">{summary.avg.toLocaleString("pt-BR")} de 5</span> em {summary.count} avaliacoes. Os nomes de quem avaliou nao aparecem.</p>
+              {summary.comments.length > 0 && <ul className="mt-3 space-y-2 text-sm">{summary.comments.map((c, i) => <li key={i} className="whitespace-pre-wrap rounded-lg bg-raised px-3 py-2 [overflow-wrap:anywhere]">{c}</li>)}</ul>}
+            </>
+          )}
+        </Card>
       )}
       <div className="mt-8">
         {!user ? (

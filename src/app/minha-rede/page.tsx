@@ -37,6 +37,10 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
     people.push(...linked.filter((l) => people.every((p) => p.id !== l.id)));
   }
   const meetings = await listMeetings(user.id);
+  const reviewable = new Set(((await db.prepare(
+    `SELECT DISTINCT m.id FROM mentorships m JOIN mentorship_meetings mm ON mm.mentorship_id = m.id
+     WHERE (m.mentor_id = ? OR m.mentee_id = ?) AND m.status = 'active' AND mm.status = 'completed'`
+  ).all(user.id, user.id)) as { id: number }[]).map((r) => Number(r.id)));
   const ret = `/minha-rede?aba=${tab}`;
   const tabs = [
     { key: "mentores", label: "Mentores" },
@@ -85,6 +89,7 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
                     <form action={respondMentorInvite}><input type="hidden" name="id" value={p.mid} /><input type="hidden" name="decision" value="decline" /><button className={btnSecondaryCls}>Recusar</button></form>
                   </div>
                 )}
+                {p.kind === "mentorship" && reviewable.has(Number(p.mid)) && <Link href={`/avaliar?mentoria=${p.mid}`} className="mt-2 inline-block text-xs text-accent hover:underline">Avaliar mentoria</Link>}
                 {p.status === "active" && <PersonMeetings meetings={meetings} kind={p.kind} linkId={p.mid} userId={user.id} returnTo={ret} />}
               </Card>
             </li>

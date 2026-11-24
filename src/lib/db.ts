@@ -476,6 +476,21 @@ CREATE TABLE IF NOT EXISTS user_blocks (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (blocker_id, blocked_id)
 );
+CREATE TABLE IF NOT EXISTS reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('mentorship','event')),
+  mentorship_id INTEGER REFERENCES mentorships(id) ON DELETE SET NULL,
+  event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+  subject_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  subject_role TEXT NOT NULL DEFAULT '',
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+  comment TEXT NOT NULL DEFAULT '',
+  as_agreed INTEGER,
+  recommend INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   reporter_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -632,7 +647,9 @@ async function ensureMigrations(db: Db) {
     state: "TEXT NOT NULL DEFAULT ''",
     organizer: "TEXT NOT NULL DEFAULT ''",
     certificate_theme: "TEXT NOT NULL DEFAULT 'classico'",
+    review_invited_at: "TEXT",
   });
+  await addColumns(db, "reports", { sensitive: "INTEGER NOT NULL DEFAULT 0" });
   await addColumns(db, "certificates", {
     workload_minutes: "INTEGER",
     organizer_name: "TEXT",
