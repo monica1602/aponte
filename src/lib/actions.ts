@@ -29,7 +29,7 @@ import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
 import { eventHasHistory } from "./event-history";
-import { canConfirmMeeting, listMeetings, meetingStarted, meetingTime, type Meeting } from "./meetings";
+import { MEETING_TABLE, canConfirmMeeting, listMeetings, meetingStarted, meetingTime, type Meeting, type MeetingKind } from "./meetings";
 import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
 } from "./my-data";
@@ -1047,7 +1047,7 @@ export async function removeAvailability(formData: FormData) {
   back("/dashboard", "msg", "Disponibilidade removida.");
 }
 
-const MEETING_RETURN = ["/dashboard", "/encontros"];
+const MEETING_RETURN = ["/dashboard", "/encontros", "/minha-rede?aba=mentores", "/minha-rede?aba=mentorados", "/empresas"];
 
 function meetingReturn(formData: FormData): string {
   const ret = str(formData, "return");
@@ -1059,44 +1059,61 @@ async function tellMeetingPartner(userId: number, subject: string, text: string)
   await emailUser(userId, subject, text, "Ver encontros", "/encontros", "network");
 }
 
+const MEETING_ENTITY: Record<MeetingKind, string> = { mentorship: "mentorship_meeting", company: "company_meeting" };
+
 export async function scheduleMentorshipMeeting(formData: FormData) {
   const user = await me();
-  const mentorshipId = Number(formData.get("mentorship_id"));
+  const kind: MeetingKind = str(formData, "kind") === "company" ? "company" : "mentorship";
+  const linkId = Number(formData.get(kind === "company" ? "link_id" : formData.has("link_id") ? "link_id" : "mentorship_id"));
   const scheduledAt = str(formData, "scheduled_at");
   const duration = Number(formData.get("duration_minutes") || 60);
   const ret = meetingReturn(formData);
   const db = getDb();
-  const link = await db.prepare(
-    "SELECT id, mentor_id, mentee_id FROM mentorships WHERE id = ? AND status = 'active' AND (mentor_id = ? OR mentee_id = ?)"
-  ).get(mentorshipId, user.id, user.id) as { id: number; mentor_id: number; mentee_id: number } | undefined;
+  const link = (kind === "company"
+    ? await db.prepare(
+        "SELECT id, company_id AS a, member_id AS b FROM company_links WHERE id = ? AND status = 'active' AND (company_id = ? OR member_id = ?)"
+      ).get(linkId, user.id, user.id)
+    : await db.prepare(
+        "SELECT id, mentor_id AS a, mentee_id AS b FROM mentorships WHERE id = ? AND status = 'active' AND (mentor_id = ? OR mentee_id = ?)"
+      ).get(linkId, user.id, user.id)) as { id: number; a: number; b: number } | undefined;
   if (!link || !validDateTime(scheduledAt) || !Number.isInteger(duration) || duration < 15 || duration > 480) {
     back(ret, "error", "Nao foi possivel agendar este encontro.");
   }
-  const result = await db.prepare(
-    "INSERT INTO mentorship_meetings (mentorship_id, scheduled_at, duration_minutes, notes, proposed_by) VALUES (?,?,?,?,?)"
-  ).run(mentorshipId, scheduledAt, duration, str(formData, "notes"), user.id);
-  await audit(user.id, "mentorship.meeting_scheduled", "mentorship_meeting", Number(result.lastInsertRowid));
-  const other = link!.mentor_id === user.id ? link!.mentee_id : link!.mentor_id;
-  await tellMeetingPartner(other, "Novo encontro de mentoria", `${user.name} agendou um encontro de mentoria para ${meetingTime(scheduledAt)}. Confirme na pagina Encontros.`);
-  back(ret, "msg", "Encontro de mentoria agendado. A outra pessoa foi avisada para confirmar.");
+  const result = kind === "company"
+    ? await db.prepare(
+        "INSERT INTO company_meetings (company_link_id, scheduled_at, duration_minutes, proposed_by) VALUES (?,?,?,?)"
+      ).run(linkId, scheduledAt, duration, user.id)
+    : await db.prepare(
+        "INSERT INTO mentorship_meetings (mentorship_id, scheduled_at, duration_minutes, notes, proposed_by) VALUES (?,?,?,?,?)"
+      ).run(linkId, scheduledAt, duration, str(formData, "notes"), user.id);
+  await audit(user.id, `${kind}.meeting_scheduled`, MEETING_ENTITY[kind], Number(result.lastInsertRowid));
+  const other = link!.a === user.id ? link!.b : link!.a;
+  const what = kind === "company" ? "um encontro" : "um encontro de mentoria";
+  await tellMeetingPartner(other, "Novo pedido de encontro", `${user.name} pediu ${what} para ${meetingTime(scheduledAt)}. Aceite, reagende ou cancele na pagina Encontros.`);
+  back(ret, "msg", "Encontro solicitado. A outra pessoa foi avisada para aceitar.");
 }
 
 async function loadMeeting(userId: number, formData: FormData, ret: string): Promise<Meeting> {
+  const kind = str(formData, "kind") === "company" ? "company" : "mentorship";
   const id = Number(formData.get("meeting_id"));
-  const meeting = (await listMeetings(userId)).find((m) => m.id === id);
+  const meeting = (await listMeetings(userId)).find((m) => m.kind === kind && m.id === id);
   if (!meeting) back(ret, "error", "Encontro nao encontrado.");
   return meeting;
+}
+
+function meetingWord(m: Meeting) {
+  return m.kind === "company" ? "o encontro" : "o encontro de mentoria";
 }
 
 export async function confirmMentorshipMeeting(formData: FormData) {
   const user = await me();
   const ret = meetingReturn(formData);
   const m = await loadMeeting(user.id, formData, ret);
-  if (!canConfirmMeeting(m, user.id)) back(ret, "error", "Este encontro nao esta aguardando a sua confirmacao.");
-  await getDb().prepare("UPDATE mentorship_meetings SET confirmed_at = datetime('now') WHERE id = ? AND status = 'scheduled' AND confirmed_at IS NULL").run(m.id);
-  await audit(user.id, "mentorship.meeting_confirmed", "mentorship_meeting", m.id);
-  await tellMeetingPartner(m.other_id, "Encontro de mentoria confirmado", `${user.name} confirmou o encontro de mentoria de ${meetingTime(m.scheduled_at)}.`);
-  back(ret, "msg", "Encontro confirmado. A outra pessoa foi avisada.");
+  if (!canConfirmMeeting(m, user.id)) back(ret, "error", "Este encontro nao esta aguardando a sua resposta.");
+  await getDb().prepare(`UPDATE ${MEETING_TABLE[m.kind]} SET confirmed_at = datetime('now') WHERE id = ? AND status = 'scheduled' AND confirmed_at IS NULL`).run(m.id);
+  await audit(user.id, `${m.kind}.meeting_confirmed`, MEETING_ENTITY[m.kind], m.id);
+  await tellMeetingPartner(m.other_id, "Encontro aceito", `${user.name} aceitou ${meetingWord(m)} de ${meetingTime(m.scheduled_at)}.`);
+  back(ret, "msg", "Encontro aceito. A outra pessoa foi avisada.");
 }
 
 export async function rescheduleMentorshipMeeting(formData: FormData) {
@@ -1107,11 +1124,11 @@ export async function rescheduleMentorshipMeeting(formData: FormData) {
   const duration = Number(formData.get("duration_minutes") || m.duration_minutes);
   if (m.status !== "scheduled") back(ret, "error", "So e possivel reagendar encontros que ainda nao foram concluidos nem cancelados.");
   if (!validDateTime(scheduledAt) || !Number.isInteger(duration) || duration < 15 || duration > 480) back(ret, "error", "Informe a nova data e uma duracao entre 15 e 480 minutos.");
-  await getDb().prepare("UPDATE mentorship_meetings SET scheduled_at = ?, duration_minutes = ?, proposed_by = ?, confirmed_at = NULL WHERE id = ?")
+  await getDb().prepare(`UPDATE ${MEETING_TABLE[m.kind]} SET scheduled_at = ?, duration_minutes = ?, proposed_by = ?, confirmed_at = NULL WHERE id = ?`)
     .run(scheduledAt, duration, user.id, m.id);
-  await audit(user.id, "mentorship.meeting_rescheduled", "mentorship_meeting", m.id);
-  await tellMeetingPartner(m.other_id, "Encontro de mentoria reagendado", `${user.name} reagendou o encontro de mentoria para ${meetingTime(scheduledAt)}. Confirme na pagina Encontros.`);
-  back(ret, "msg", "Encontro reagendado. A outra pessoa foi avisada para confirmar.");
+  await audit(user.id, `${m.kind}.meeting_rescheduled`, MEETING_ENTITY[m.kind], m.id);
+  await tellMeetingPartner(m.other_id, "Encontro reagendado", `${user.name} reagendou ${meetingWord(m)} para ${meetingTime(scheduledAt)}. Aceite, reagende ou cancele na pagina Encontros.`);
+  back(ret, "msg", "Encontro reagendado. A outra pessoa foi avisada para aceitar.");
 }
 
 export async function cancelMentorshipMeeting(formData: FormData) {
@@ -1120,9 +1137,9 @@ export async function cancelMentorshipMeeting(formData: FormData) {
   const m = await loadMeeting(user.id, formData, ret);
   if (m.status !== "scheduled") back(ret, "error", "Este encontro ja foi concluido ou cancelado.");
   if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para cancelar o encontro.");
-  await getDb().prepare("UPDATE mentorship_meetings SET status = 'cancelled' WHERE id = ? AND status = 'scheduled'").run(m.id);
-  await audit(user.id, "mentorship.meeting_cancelled", "mentorship_meeting", m.id);
-  await tellMeetingPartner(m.other_id, "Encontro de mentoria cancelado", `${user.name} cancelou o encontro de mentoria de ${meetingTime(m.scheduled_at)}.`);
+  await getDb().prepare(`UPDATE ${MEETING_TABLE[m.kind]} SET status = 'cancelled' WHERE id = ? AND status = 'scheduled'`).run(m.id);
+  await audit(user.id, `${m.kind}.meeting_cancelled`, MEETING_ENTITY[m.kind], m.id);
+  await tellMeetingPartner(m.other_id, "Encontro cancelado", `${user.name} cancelou ${meetingWord(m)} de ${meetingTime(m.scheduled_at)}.`);
   back(ret, "msg", "Encontro cancelado. A outra pessoa foi avisada.");
 }
 
@@ -1132,9 +1149,9 @@ export async function completeMentorshipMeeting(formData: FormData) {
   const m = await loadMeeting(user.id, formData, ret);
   if (m.status !== "scheduled") back(ret, "error", "Este encontro ja foi concluido ou cancelado.");
   if (!meetingStarted(m.scheduled_at)) back(ret, "error", "O encontro so pode ser concluido depois do horario de inicio.");
-  await getDb().prepare("UPDATE mentorship_meetings SET status = 'completed' WHERE id = ? AND status = 'scheduled'").run(m.id);
-  await audit(user.id, "mentorship.meeting_completed", "mentorship_meeting", m.id);
-  await tellMeetingPartner(m.other_id, "Encontro de mentoria concluido", `${user.name} marcou como concluido o encontro de mentoria de ${meetingTime(m.scheduled_at)}.`);
+  await getDb().prepare(`UPDATE ${MEETING_TABLE[m.kind]} SET status = 'completed' WHERE id = ? AND status = 'scheduled'`).run(m.id);
+  await audit(user.id, `${m.kind}.meeting_completed`, MEETING_ENTITY[m.kind], m.id);
+  await tellMeetingPartner(m.other_id, "Encontro concluido", `${user.name} marcou como concluido ${meetingWord(m)} de ${meetingTime(m.scheduled_at)}.`);
   back(ret, "msg", "Encontro concluido. Ele foi para o historico.");
 }
 

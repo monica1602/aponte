@@ -47,6 +47,7 @@ export const MY_DATA_SECTIONS = {
   eventos_organizados: "Eventos organizados",
   mentorias: "Mentorias",
   encontros_de_mentoria: "Encontros de mentoria",
+  encontros_com_empresas: "Encontros com empresas",
   vinculos_com_empresas: "Vinculos com empresas",
   projetos: "Projetos",
   candidaturas_em_projetos: "Candidaturas em projetos",
@@ -104,6 +105,14 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
        FROM mentorship_meetings mm JOIN mentorships m ON m.id = mm.mentorship_id
        WHERE m.mentor_id = ? OR m.mentee_id = ? ORDER BY mm.scheduled_at DESC`,
       3
+    ),
+    encontros_com_empresas: await all(
+      `SELECT CASE WHEN l.company_id = ? THEN 'empresa' ELSE 'membro' END AS meu_papel, o.name AS outra_parte,
+              cm.scheduled_at, cm.duration_minutes, cm.status, cm.confirmed_at, CASE WHEN cm.proposed_by = ? THEN 1 ELSE 0 END AS agendado_por_mim, cm.created_at
+       FROM company_meetings cm JOIN company_links l ON l.id = cm.company_link_id
+       JOIN users o ON o.id = CASE WHEN l.company_id = ? THEN l.member_id ELSE l.company_id END
+       WHERE l.company_id = ? OR l.member_id = ? ORDER BY cm.scheduled_at DESC`,
+      5
     ),
     vinculos_com_empresas: await all(
       `SELECT CASE WHEN c.company_id = ? THEN 'empresa' ELSE 'membro' END AS meu_papel, o.name AS outra_parte, c.status, c.message, c.created_at

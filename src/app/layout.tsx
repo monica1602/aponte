@@ -54,8 +54,9 @@ function accountNav(role: string) {
       OPEN_SOURCE,
       { href: "/meus-eventos", label: "Eventos participantes" }];
   return [...base,
-    { href: "/mentores", label: "Mentores" },
-    { href: "/talentos", label: "Mentorados" },
+    { href: "/minha-rede?aba=mentores", label: "Mentores" },
+    { href: "/minha-rede?aba=mentorados", label: "Mentorados" },
+    { href: "/encontros", label: "Encontros" },
     { href: "/meus-projetos", label: "Meus projetos" },
     OPEN_SOURCE,
     { href: "/meus-eventos", label: "Meus eventos" },

@@ -4,12 +4,14 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { respondMentorInvite } from "@/lib/actions";
+import { listMeetings } from "@/lib/meetings";
+import { PersonMeetings } from "@/components/meeting-item";
 import { Badge, Card, Empty, Flash, PageHeader, ROLE_LABELS, btnCls, btnSecondaryCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Minha rede — Ponte" };
 
-type Person = { mid: number; id: number; name: string; role: string; headline: string; email: string; status: string; objective: string; message: string; requested_by: string };
+type Person = { kind: "mentorship" | "company"; mid: number; id: number; name: string; role: string; headline: string; email: string; status: string; objective: string; message: string; requested_by: string };
 
 export default async function MinhaRedePage({ searchParams }: { searchParams: Promise<{ aba?: string; msg?: string; error?: string }> }) {
   const sp = await searchParams;
@@ -19,21 +21,23 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
   const db = getDb();
   const people = (tab === "mentores"
     ? await db.prepare(
-        `SELECT m.id AS mid, u.id, u.name, u.role, u.headline, u.email, m.status, m.objective, m.message, m.requested_by FROM mentorships m
+        `SELECT 'mentorship' AS kind, m.id AS mid, u.id, u.name, u.role, u.headline, u.email, m.status, m.objective, m.message, m.requested_by FROM mentorships m
          JOIN users u ON u.id = m.mentor_id WHERE m.mentee_id = ? ORDER BY m.status, u.name`
       ).all(user.id)
     : await db.prepare(
-        `SELECT m.id AS mid, u.id, u.name, u.role, u.headline, u.email, m.status, m.objective, m.message, m.requested_by FROM mentorships m
+        `SELECT 'mentorship' AS kind, m.id AS mid, u.id, u.name, u.role, u.headline, u.email, m.status, m.objective, m.message, m.requested_by FROM mentorships m
          JOIN users u ON u.id = m.mentee_id WHERE m.mentor_id = ? ORDER BY m.status, u.name`
       ).all(user.id)) as unknown as Person[];
   if (user.role === "company") {
     const role = tab === "mentores" ? "mentor" : "mentee";
     const linked = (await db.prepare(
-      `SELECT l.id AS mid, u.id, u.name, u.role, u.headline, u.email, l.status, '' AS objective, l.message, 'company' AS requested_by FROM company_links l
+      `SELECT 'company' AS kind, l.id AS mid, u.id, u.name, u.role, u.headline, u.email, l.status, '' AS objective, l.message, 'company' AS requested_by FROM company_links l
        JOIN users u ON u.id = l.member_id WHERE l.company_id = ? AND u.role = ? ORDER BY l.status, u.name`
     ).all(user.id, role)) as unknown as Person[];
     people.push(...linked.filter((l) => people.every((p) => p.id !== l.id)));
   }
+  const meetings = await listMeetings(user.id);
+  const ret = `/minha-rede?aba=${tab}`;
   const tabs = [
     { key: "mentores", label: "Mentores" },
     { key: "mentorados", label: "Mentorados" },
@@ -81,6 +85,7 @@ export default async function MinhaRedePage({ searchParams }: { searchParams: Pr
                     <form action={respondMentorInvite}><input type="hidden" name="id" value={p.mid} /><input type="hidden" name="decision" value="decline" /><button className={btnSecondaryCls}>Recusar</button></form>
                   </div>
                 )}
+                {p.status === "active" && <PersonMeetings meetings={meetings} kind={p.kind} linkId={p.mid} userId={user.id} returnTo={ret} />}
               </Card>
             </li>
           ))}

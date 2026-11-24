@@ -182,7 +182,7 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
 
 function UpcomingMeetings({ meetings, userId }: { meetings: Meeting[]; userId: number }) {
   const next = meetings.filter((m) => m.status === "scheduled").slice(0, 3);
-  return <Card><div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Proximos encontros</h2><Link href="/encontros" className="text-xs text-accent hover:underline">Ver todos os encontros →</Link></div>{next.length === 0 ? <div className="mt-2"><Empty>Nenhum encontro agendado.</Empty></div> : <ul className="mt-3 space-y-2">{next.map((m) => <MeetingItem key={m.id} m={m} userId={userId} returnTo="/dashboard" />)}</ul>}</Card>;
+  return <Card><div className="flex items-center justify-between gap-3"><h2 className="font-semibold">Proximos encontros</h2><Link href="/encontros" className="text-xs text-accent hover:underline">Ver todos os encontros →</Link></div>{next.length === 0 ? <div className="mt-2"><Empty>Nenhum encontro agendado.</Empty></div> : <ul className="mt-3 space-y-2">{next.map((m) => <MeetingItem key={`${m.kind}-${m.id}`} m={m} userId={userId} returnTo="/dashboard" />)}</ul>}</Card>;
 }
 
 function MeetingPlanner({ links }: { links: MeetingLink[] }) {

@@ -271,6 +271,16 @@ CREATE TABLE IF NOT EXISTS mentorship_meetings (
   status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','completed','cancelled')),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS company_meetings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_link_id INTEGER NOT NULL REFERENCES company_links(id) ON DELETE CASCADE,
+  scheduled_at TEXT NOT NULL,
+  duration_minutes INTEGER NOT NULL DEFAULT 60,
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','completed','cancelled')),
+  proposed_by INTEGER,
+  confirmed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS certificates (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

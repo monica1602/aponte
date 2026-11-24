@@ -4,6 +4,8 @@ import Link from "next/link";
 import { getDb, getProfile } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
 import { respondCompanyInvite } from "@/lib/actions";
+import { listMeetings } from "@/lib/meetings";
+import { PersonMeetings } from "@/components/meeting-item";
 import { Badge, Card, Empty, Flash, PageHeader, btnCls, btnSecondaryCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +25,7 @@ export default async function EmpresasPage({ searchParams }: { searchParams: Pro
          WHERE l.member_id = ? ORDER BY l.status DESC, u.name`
       ).all(user.id)) as unknown as CompanyLink[])
     : [];
+  const meetings = user && links.some((l) => l.status === "active") ? await listMeetings(user.id) : [];
   const rows = (await db.prepare(
     `SELECT u.id, u.name, u.headline,
        (SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id AND p.status <> 'rascunho') AS projects,
@@ -54,6 +57,7 @@ export default async function EmpresasPage({ searchParams }: { searchParams: Pro
                       <form action={respondCompanyInvite}><input type="hidden" name="id" value={l.id} /><input type="hidden" name="decision" value="decline" /><button className={btnSecondaryCls}>Recusar</button></form>
                     </div>
                   )}
+                  {l.status === "active" && <PersonMeetings meetings={meetings} kind="company" linkId={l.id} userId={user!.id} returnTo="/empresas" />}
                 </Card>
               </li>
             ))}
