@@ -24,3 +24,13 @@ test("concluir so depois do horario de inicio", () => {
   assert.equal(meetingStarted("2026-11-23T14:59", now), true);
   assert.equal(meetingStarted("2026-11-23T15:30", now), false);
 });
+
+test("endereco da pagina do encontro", async () => {
+  const { meetingPath, parseMeetingRef } = await import("../src/lib/meetings.ts");
+  assert.equal(meetingPath("mentorship", 12), "/encontros/mentoria-12");
+  assert.equal(meetingPath("company", 3), "/encontros/empresa-3");
+  assert.deepEqual(parseMeetingRef("mentoria-12"), { kind: "mentorship", id: 12 });
+  assert.deepEqual(parseMeetingRef("empresa-3"), { kind: "company", id: 3 });
+  assert.equal(parseMeetingRef("empresa-3x"), null);
+  assert.equal(parseMeetingRef("outro-1"), null);
+});

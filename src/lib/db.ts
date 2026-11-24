@@ -281,6 +281,31 @@ CREATE TABLE IF NOT EXISTS company_meetings (
   confirmed_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS meeting_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mentorship_meeting_id INTEGER REFERENCES mentorship_meetings(id) ON DELETE CASCADE,
+  company_meeting_id INTEGER REFERENCES company_meetings(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS meeting_agreements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mentorship_meeting_id INTEGER REFERENCES mentorship_meetings(id) ON DELETE CASCADE,
+  company_meeting_id INTEGER REFERENCES company_meetings(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  done_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS meeting_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mentorship_meeting_id INTEGER REFERENCES mentorship_meetings(id) ON DELETE CASCADE,
+  company_meeting_id INTEGER REFERENCES company_meetings(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS certificates (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

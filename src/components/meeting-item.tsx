@@ -1,12 +1,13 @@
+import Link from "next/link";
 import { Badge, ROLE_LABELS } from "./ui";
 import { cancelMentorshipMeeting, completeMentorshipMeeting, confirmMentorshipMeeting, rescheduleMentorshipMeeting, scheduleMentorshipMeeting } from "@/lib/actions";
-import { MEETING_LABEL, canConfirmMeeting, meetingStarted, meetingState, meetingTime, type Meeting, type MeetingKind } from "@/lib/meetings";
+import { MEETING_LABEL, canConfirmMeeting, meetingPath, meetingStarted, meetingState, meetingTime, type Meeting, type MeetingKind } from "@/lib/meetings";
 
 const STATE_BADGE = { pending: "requested", confirmed: "approved", completed: "active", cancelled: "cancelled" } as const;
 const field = "rounded-md border border-line bg-raised px-2 py-1 text-sm";
 
 /** Um encontro de mentoria com a situacao e as acoes de quem esta vendo. */
-export function MeetingItem({ m, userId, returnTo }: { m: Meeting; userId: number; returnTo: string }) {
+export function MeetingItem({ m, userId, returnTo, showOpen = true }: { m: Meeting; userId: number; returnTo: string; showOpen?: boolean }) {
   const state = meetingState(m);
   const open = m.status === "scheduled";
   const hidden = <><input type="hidden" name="kind" value={m.kind} /><input type="hidden" name="meeting_id" value={m.id} /><input type="hidden" name="return" value={returnTo} /></>;
@@ -14,7 +15,10 @@ export function MeetingItem({ m, userId, returnTo }: { m: Meeting; userId: numbe
     <li className="rounded-xl border border-line p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span><span className="font-medium">{meetingTime(m.scheduled_at)}</span> · {m.duration_minutes} min · com {m.other_name} · {ROLE_LABELS[m.other_role] ?? m.other_role}</span>
-        <Badge kind={STATE_BADGE[state]} label={MEETING_LABEL[state]} />
+        <span className="flex items-center gap-3">
+          {showOpen && <Link href={meetingPath(m.kind, m.id)} className="text-xs text-accent hover:underline">Abrir encontro →</Link>}
+          <Badge kind={STATE_BADGE[state]} label={MEETING_LABEL[state]} />
+        </span>
       </div>
       {state === "pending" && !canConfirmMeeting(m, userId) && <p className="mt-1 text-xs text-muted">Aguardando a resposta de {m.other_name}.</p>}
       {open && (
@@ -50,7 +54,7 @@ export function PersonMeetings({ meetings, kind, linkId, userId, returnTo }: { m
   const open = meetings.filter((m) => m.kind === kind && m.link_id === linkId && m.status === "scheduled");
   return (
     <div className="mt-3 border-t border-line pt-3">
-      <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Encontros</h3><a href="/encontros" className="text-xs text-accent hover:underline">Historico →</a></div>
+      <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Encontros</h3><Link href="/encontros" className="text-xs text-accent hover:underline">Historico →</Link></div>
       {open.length === 0 ? <p className="mt-1 text-xs text-muted">Nenhum encontro marcado.</p> : <ul className="mt-2 space-y-2">{open.map((m) => <MeetingItem key={`${m.kind}-${m.id}`} m={m} userId={userId} returnTo={returnTo} />)}</ul>}
       <details className="mt-2 text-xs">
         <summary className="cursor-pointer text-accent">Solicitar encontro</summary>

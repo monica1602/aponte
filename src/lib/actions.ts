@@ -29,7 +29,7 @@ import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
 import { eventHasHistory } from "./event-history";
-import { MEETING_TABLE, canConfirmMeeting, listMeetings, meetingStarted, meetingTime, type Meeting, type MeetingKind } from "./meetings";
+import { MEETING_COL, MEETING_TABLE, canConfirmMeeting, listMeetings, meetingPath, meetingStarted, meetingTime, parseMeetingRef, type Meeting, type MeetingKind } from "./meetings";
 import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
 } from "./my-data";
@@ -1051,7 +1051,7 @@ const MEETING_RETURN = ["/dashboard", "/encontros", "/minha-rede?aba=mentores", 
 
 function meetingReturn(formData: FormData): string {
   const ret = str(formData, "return");
-  return MEETING_RETURN.includes(ret) ? ret : "/dashboard";
+  return MEETING_RETURN.includes(ret) || parseMeetingRef(ret.replace(/^\/encontros\//, "")) && ret.startsWith("/encontros/") ? ret : "/dashboard";
 }
 
 async function tellMeetingPartner(userId: number, subject: string, text: string) {
@@ -1153,6 +1153,74 @@ export async function completeMentorshipMeeting(formData: FormData) {
   await audit(user.id, `${m.kind}.meeting_completed`, MEETING_ENTITY[m.kind], m.id);
   await tellMeetingPartner(m.other_id, "Encontro concluido", `${user.name} marcou como concluido ${meetingWord(m)} de ${meetingTime(m.scheduled_at)}.`);
   back(ret, "msg", "Encontro concluido. Ele foi para o historico.");
+}
+
+const MEETING_TEXT_MAX = 2000;
+
+async function meetingFromForm(userId: number, formData: FormData): Promise<{ m: Meeting; ret: string }> {
+  const kind: MeetingKind = str(formData, "kind") === "company" ? "company" : "mentorship";
+  const id = Number(formData.get("meeting_id"));
+  const ret = Number.isInteger(id) && id > 0 ? meetingPath(kind, id) : "/encontros";
+  const m = (await listMeetings(userId)).find((x) => x.kind === kind && x.id === id);
+  if (!m) back("/encontros", "error", "Encontro nao encontrado.");
+  return { m, ret };
+}
+
+function meetingText(formData: FormData, ret: string, min = 1): string {
+  const body = str(formData, "body");
+  if (body.length < min) back(ret, "error", "Escreva o texto antes de enviar.");
+  if (body.length > MEETING_TEXT_MAX) back(ret, "error", `O texto pode ter no maximo ${MEETING_TEXT_MAX} caracteres.`);
+  return body;
+}
+
+export async function saveMeetingNote(formData: FormData) {
+  const user = await me();
+  const { m, ret } = await meetingFromForm(user.id, formData);
+  const body = meetingText(formData, ret, 0);
+  const db = getDb();
+  const col = MEETING_COL[m.kind];
+  const existing = await db.prepare(`SELECT id FROM meeting_notes WHERE ${col} = ? AND author_id = ?`).get(m.id, user.id) as { id: number } | undefined;
+  if (existing) await db.prepare("UPDATE meeting_notes SET body = ?, updated_at = datetime('now') WHERE id = ?").run(body, existing.id);
+  else await db.prepare(`INSERT INTO meeting_notes (${col}, author_id, body) VALUES (?,?,?)`).run(m.id, user.id, body);
+  back(ret, "msg", "Nota privada salva. So voce consegue ver.");
+}
+
+export async function addMeetingAgreement(formData: FormData) {
+  const user = await me();
+  const { m, ret } = await meetingFromForm(user.id, formData);
+  if (m.status === "cancelled") back(ret, "error", "Nao e possivel acrescentar combinados em encontro cancelado.");
+  const body = meetingText(formData, ret);
+  const result = await getDb().prepare(`INSERT INTO meeting_agreements (${MEETING_COL[m.kind]}, author_id, body) VALUES (?,?,?)`).run(m.id, user.id, body);
+  await audit(user.id, "meeting.agreement_added", "meeting_agreement", Number(result.lastInsertRowid));
+  await notify(m.other_id, `${user.name} acrescentou um combinado ao encontro de ${meetingTime(m.scheduled_at)}.`, ret);
+  back(ret, "msg", "Combinado acrescentado. A outra pessoa foi avisada.");
+}
+
+export async function toggleMeetingAgreement(formData: FormData) {
+  const user = await me();
+  const { m, ret } = await meetingFromForm(user.id, formData);
+  const db = getDb();
+  const id = Number(formData.get("agreement_id"));
+  const a = await db.prepare(`SELECT id, done_at FROM meeting_agreements WHERE id = ? AND ${MEETING_COL[m.kind]} = ?`).get(id, m.id) as
+    { id: number; done_at: string | null } | undefined;
+  if (!a) back(ret, "error", "Combinado nao encontrado.");
+  await db.prepare(`UPDATE meeting_agreements SET done_at = ${a!.done_at ? "NULL" : "datetime('now')"} WHERE id = ?`).run(id);
+  await audit(user.id, a!.done_at ? "meeting.agreement_reopened" : "meeting.agreement_done", "meeting_agreement", id);
+  back(ret, "msg", a!.done_at ? "Combinado reaberto." : "Combinado marcado como feito.");
+}
+
+export async function sendMeetingFeedback(formData: FormData) {
+  const user = await me();
+  const { m, ret } = await meetingFromForm(user.id, formData);
+  if (m.status !== "completed") back(ret, "error", "O feedback abre depois que o encontro for concluido.");
+  const body = meetingText(formData, ret, 2);
+  const db = getDb();
+  const col = MEETING_COL[m.kind];
+  if (await db.prepare(`SELECT id FROM meeting_feedback WHERE ${col} = ? AND author_id = ?`).get(m.id, user.id)) back(ret, "error", "Voce ja enviou o seu feedback deste encontro.");
+  const result = await db.prepare(`INSERT INTO meeting_feedback (${col}, author_id, body) VALUES (?,?,?)`).run(m.id, user.id, body);
+  await audit(user.id, "meeting.feedback_sent", "meeting_feedback", Number(result.lastInsertRowid));
+  await notify(m.other_id, `${user.name} deixou um feedback sobre o encontro de ${meetingTime(m.scheduled_at)}.`, ret);
+  back(ret, "msg", "Feedback enviado. A outra pessoa foi avisada.");
 }
 
 export async function issueCertificate(formData: FormData) {

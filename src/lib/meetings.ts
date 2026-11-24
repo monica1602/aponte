@@ -53,3 +53,35 @@ export async function listMeetings(userId: number): Promise<Meeting[]> {
      ORDER BY scheduled_at`
   ).all(userId, userId, userId, userId, userId, userId)) as unknown as Meeting[];
 }
+
+/** Coluna que liga notas, combinados e feedback ao encontro. */
+export const MEETING_COL: Record<MeetingKind, string> = { mentorship: "mentorship_meeting_id", company: "company_meeting_id" };
+
+const REF_PREFIX: Record<MeetingKind, string> = { mentorship: "mentoria", company: "empresa" };
+
+export function meetingPath(kind: MeetingKind, id: number): string {
+  return `/encontros/${REF_PREFIX[kind]}-${id}`;
+}
+
+export function parseMeetingRef(ref: string): { kind: MeetingKind; id: number } | null {
+  const m = /^(mentoria|empresa)-(\d+)$/.exec(ref);
+  return m ? { kind: m[1] === "empresa" ? "company" : "mentorship", id: Number(m[2]) } : null;
+}
+
+export type MeetingText = { id: number; author_id: number; author_name: string; body: string; done_at?: string | null; created_at: string };
+
+export async function meetingDetails(kind: MeetingKind, id: number, userId: number) {
+  const db = getDb();
+  const col = MEETING_COL[kind];
+  const note = (await db.prepare(`SELECT body, updated_at FROM meeting_notes WHERE ${col} = ? AND author_id = ?`).get(id, userId)) as
+    | { body: string; updated_at: string } | undefined;
+  const agreements = (await db.prepare(
+    `SELECT a.id, a.author_id, u.name AS author_name, a.body, a.done_at, a.created_at FROM meeting_agreements a JOIN users u ON u.id = a.author_id
+     WHERE a.${col} = ? ORDER BY a.created_at, a.id`
+  ).all(id)) as unknown as MeetingText[];
+  const feedback = (await db.prepare(
+    `SELECT f.id, f.author_id, u.name AS author_name, f.body, f.created_at FROM meeting_feedback f JOIN users u ON u.id = f.author_id
+     WHERE f.${col} = ? ORDER BY f.created_at, f.id`
+  ).all(id)) as unknown as MeetingText[];
+  return { note, agreements, feedback };
+}

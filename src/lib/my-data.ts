@@ -48,6 +48,9 @@ export const MY_DATA_SECTIONS = {
   mentorias: "Mentorias",
   encontros_de_mentoria: "Encontros de mentoria",
   encontros_com_empresas: "Encontros com empresas",
+  notas_privadas_de_encontros: "Notas privadas de encontros",
+  combinados_de_encontros: "Combinados de encontros",
+  feedbacks_de_encontros: "Feedbacks de encontros",
   vinculos_com_empresas: "Vinculos com empresas",
   projetos: "Projetos",
   candidaturas_em_projetos: "Candidaturas em projetos",
@@ -112,6 +115,25 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
        FROM company_meetings cm JOIN company_links l ON l.id = cm.company_link_id
        JOIN users o ON o.id = CASE WHEN l.company_id = ? THEN l.member_id ELSE l.company_id END
        WHERE l.company_id = ? OR l.member_id = ? ORDER BY cm.scheduled_at DESC`,
+      5
+    ),
+    notas_privadas_de_encontros: await all(
+      `SELECT CASE WHEN x.mentorship_meeting_id IS NOT NULL THEN 'mentoria' ELSE 'empresa' END AS encontro, COALESCE(mm.scheduled_at, cm.scheduled_at) AS data_do_encontro, x.body, x.updated_at
+       FROM meeting_notes x LEFT JOIN mentorship_meetings mm ON mm.id = x.mentorship_meeting_id LEFT JOIN company_meetings cm ON cm.id = x.company_meeting_id
+       WHERE x.author_id = ?`
+    ),
+    combinados_de_encontros: await all(
+      `SELECT CASE WHEN x.author_id = ? THEN 1 ELSE 0 END AS escrito_por_mim, COALESCE(mm.scheduled_at, cm.scheduled_at) AS data_do_encontro, x.body, x.done_at, x.created_at
+       FROM meeting_agreements x LEFT JOIN mentorship_meetings mm ON mm.id = x.mentorship_meeting_id LEFT JOIN mentorships m ON m.id = mm.mentorship_id
+       LEFT JOIN company_meetings cm ON cm.id = x.company_meeting_id LEFT JOIN company_links l ON l.id = cm.company_link_id
+       WHERE m.mentor_id = ? OR m.mentee_id = ? OR l.company_id = ? OR l.member_id = ?`,
+      5
+    ),
+    feedbacks_de_encontros: await all(
+      `SELECT CASE WHEN x.author_id = ? THEN 1 ELSE 0 END AS escrito_por_mim, COALESCE(mm.scheduled_at, cm.scheduled_at) AS data_do_encontro, x.body, x.created_at
+       FROM meeting_feedback x LEFT JOIN mentorship_meetings mm ON mm.id = x.mentorship_meeting_id LEFT JOIN mentorships m ON m.id = mm.mentorship_id
+       LEFT JOIN company_meetings cm ON cm.id = x.company_meeting_id LEFT JOIN company_links l ON l.id = cm.company_link_id
+       WHERE m.mentor_id = ? OR m.mentee_id = ? OR l.company_id = ? OR l.member_id = ?`,
       5
     ),
     vinculos_com_empresas: await all(
