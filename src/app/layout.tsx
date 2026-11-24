@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { logout, resendEmailVerification } from "@/lib/actions";
 import { getDb, getProfile, profileCompleteness } from "@/lib/db";
 import { isTemporaryDatabase } from "@/lib/sql";
+import { unreadMessageCount } from "@/lib/messages";
 import { Suspense } from "react";
 import { MobileMenuCloser } from "@/components/mobile-menu-closer";
 import { FormKeeper } from "@/components/form-keeper";
@@ -33,6 +34,7 @@ function accountNav(role: string) {
     { href: "/dashboard", label: "Painel" },
     { href: "/perfil", label: "Meu perfil" },
     { href: "/meus-dados", label: "Meus dados" },
+    { href: "/mensagens", label: "Mensagens" },
   ];
   if (role === "mentor")
     return [...base,
@@ -73,6 +75,7 @@ export default async function RootLayout({
   const unread = user
     ? (await getDb().prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL").get(user.id) as { n: number }).n
     : 0;
+  const unreadMessages = user ? await unreadMessageCount(user.id) : 0;
   const completeness = user ? Math.round(profileCompleteness(await getProfile(user.id), user.role) * 100) : 100;
   return (
     <html lang="pt-BR" className={geist.variable}>
@@ -134,7 +137,7 @@ export default async function RootLayout({
                     <nav aria-label="Minha conta" className="absolute right-0 top-8 z-40 flex w-56 flex-col rounded-lg border border-line bg-surface p-2 text-sm shadow-2xl shadow-black/50">
                       {accountNav(user.role).map((n) => (
                         <Link key={n.href} href={n.href} className="rounded-md px-3 py-2 text-muted transition-colors hover:bg-raised hover:text-fg">
-                          {n.label}
+                          {n.href === "/mensagens" && unreadMessages ? `Mensagens (${unreadMessages})` : n.label}
                         </Link>
                       ))}
                     </nav>
@@ -182,7 +185,7 @@ export default async function RootLayout({
                     <>
                       {accountNav(user!.role).concat([{ href: "/notificacoes", label: `Notificacoes${unread ? ` (${unread})` : ""}` }]).map((n) => (
                         <Link key={n.href} href={n.href} className="rounded-md px-3 py-2.5 text-muted transition-colors hover:bg-raised hover:text-fg">
-                          {n.label}
+                          {n.href === "/mensagens" && unreadMessages ? `Mensagens (${unreadMessages})` : n.label}
                         </Link>
                       ))}
                       <Link

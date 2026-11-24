@@ -60,6 +60,7 @@ export const MY_DATA_SECTIONS = {
   contribuicoes: "Contribuicoes",
   feedbacks_escritos: "Feedbacks escritos",
   oportunidades: "Oportunidades publicadas",
+  mensagens: "Mensagens",
   notificacoes: "Notificacoes",
   pedidos_sobre_dados: "Pedidos sobre seus dados",
   registro_de_acoes: "Registro das suas acoes (auditoria)",
@@ -163,6 +164,14 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
       2
     ),
     oportunidades: await all("SELECT type, title, description, skills, created_at FROM opportunities WHERE owner_id = ? ORDER BY created_at DESC"),
+    mensagens: await all(
+      `SELECT o.name AS outra_pessoa, c.status AS situacao_da_conversa, CASE WHEN m.sender_id = ? THEN 1 ELSE 0 END AS enviada_por_mim,
+              COALESCE(m.body, 'Mensagem removida') AS texto, m.created_at, m.read_at
+       FROM messages m JOIN conversations c ON c.id = m.conversation_id
+       LEFT JOIN users o ON o.id = CASE WHEN c.user_a = ? THEN c.user_b ELSE c.user_a END
+       WHERE c.user_a = ? OR c.user_b = ? ORDER BY m.created_at, m.id`,
+      4
+    ),
     notificacoes: await all("SELECT body, link, read_at, created_at FROM notifications WHERE user_id = ? ORDER BY created_at DESC"),
     pedidos_sobre_dados: await all("SELECT kind, message, status, response, created_at, answered_at FROM data_requests WHERE user_id = ? ORDER BY created_at DESC"),
     registro_de_acoes: await all("SELECT action, entity_type, created_at FROM audit_log WHERE actor_id = ? ORDER BY created_at DESC"),

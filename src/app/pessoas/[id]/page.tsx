@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canSeeEmail, getDb, getUser } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
-import { inviteToCompany, requestMentorship, toggleEndorsement } from "@/lib/actions";
-import { Badge, Card, Empty, Flash, SkillChips, TYPE_LABELS, btnCls, inputCls } from "@/components/ui";
+import { inviteToCompany, requestMentorship, sendMessage, toggleEndorsement } from "@/lib/actions";
+import { MESSAGE_MAX, canMessageDirect, conversationBetween } from "@/lib/messages";
+import { Badge, Card, Empty, Flash, SkillChips, TYPE_LABELS, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +88,12 @@ export default async function PessoaPage({
     }
   }
 
+  const canContact = !!viewer && viewer.id !== profile.id && profile.account_status === "active";
+  const existing = canContact ? await conversationBetween(viewer!.id, profile.id) : undefined;
+  const conversation = existing?.status === "declined" && existing.requested_by !== viewer?.id ? undefined : existing;
+  const direct = canContact ? await canMessageDirect(viewer!.id, profile.id) : false;
+  const contactDeclined = conversation?.status === "declined" && conversation.requested_by === viewer?.id && !direct;
+
   return (
     <div className="space-y-6">
       <Flash params={sp} />
@@ -136,6 +143,28 @@ export default async function PessoaPage({
               ? <>Contato: <span className="font-mono">{profile.email}</span></>
               : "O contato aparece quando voces tiverem uma mentoria, um vinculo ou um projeto ativo."}
           </p>
+        )}
+        {canContact && (
+          <div className="mt-3">
+            {contactDeclined ? (
+              <Badge kind="pending" label="Pedido de contato nao aceito" />
+            ) : conversation ? (
+              <Link href={`/mensagens?c=${conversation.id}`} className={btnSecondaryCls}>Abrir conversa</Link>
+            ) : (
+              <details>
+                <summary className={`${btnSecondaryCls} cursor-pointer list-none`}>{direct ? "Enviar mensagem" : "Pedir contato"}</summary>
+                <form action={sendMessage} className="mt-3 max-w-lg space-y-2">
+                  <input type="hidden" name="to" value={profile.id} />
+                  <textarea name="body" required rows={3} maxLength={MESSAGE_MAX} aria-label="Mensagem" className={inputCls}
+                    placeholder={direct ? "Escreva sua mensagem" : "Conte quem voce e e por que quer conversar"} />
+                  <p className="text-xs text-muted">
+                    {direct ? "A mensagem fica em Mensagens. O seu e-mail nao aparece." : "A pessoa recebe o pedido com esta mensagem e decide se aceita conversar. O seu e-mail nao aparece."}
+                  </p>
+                  <button className={btnCls}>{direct ? "Enviar mensagem" : "Enviar pedido de contato"}</button>
+                </form>
+              </details>
+            )}
+          </div>
         )}
       </Card>
 

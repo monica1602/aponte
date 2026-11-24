@@ -36,6 +36,7 @@ import { MEETING_COL, MEETING_TABLE, canConfirmMeeting, listMeetings, meetingPat
 import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
 } from "./my-data";
+import { MESSAGE_EMAIL_GAP_MIN, MESSAGE_LIMIT, canMessageDirect, conversationBetween, getConversation, messageProblem, otherOf, pair, type ConversationRow } from "./messages";
 import { createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
@@ -420,6 +421,7 @@ export async function deleteAccount(formData: FormData) {
   await getDb().prepare("DELETE FROM data_requests WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM email_changes WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM certificate_history WHERE certificate_id IN (SELECT id FROM certificates WHERE user_id = ?)").run(user.id);
+  await getDb().prepare("UPDATE messages SET body = NULL WHERE sender_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);
   await alertAdmin(`Conta excluida pelo proprio usuario: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   redirect(`/login?msg=${encodeURIComponent("Sua conta e seus dados foram excluidos.")}`);
@@ -1611,4 +1613,80 @@ export async function saveEmailPreferences(formData: FormData) {
     ["news", !!Number(row.news_consent), next.news],
   ], "meus_dados");
   back(MY_DATA, "msg", "Preferencias de e-mail salvas.");
+}
+
+function minutesAgoUtc(min: number): string {
+  return new Date(Date.now() - min * 60_000).toISOString().slice(0, 19).replace("T", " ");
+}
+
+/** Avisa no sino (1 aviso nao lido por conversa) e por e-mail (no maximo 1 por conversa a cada hora), sem o texto da mensagem. */
+async function notifyMessage(c: ConversationRow, toId: number, subject: string, text: string) {
+  const link = `/mensagens?c=${c.id}`;
+  const db = getDb();
+  if (!(await db.prepare("SELECT 1 FROM notifications WHERE user_id = ? AND link = ? AND read_at IS NULL").get(toId, link))) await notify(toId, text, link);
+  const col = c.user_a === toId ? "emailed_a_at" : "emailed_b_at";
+  const claimed = await db.prepare(`UPDATE conversations SET ${col} = datetime('now') WHERE id = ? AND (${col} IS NULL OR ${col} < ?)`).run(c.id, minutesAgoUtc(MESSAGE_EMAIL_GAP_MIN));
+  if (claimed.changes) await emailUser(toId, subject, `${text} Entre na Ponte para ler e responder.`, "Abrir mensagens", link, "network");
+}
+
+export async function sendMessage(formData: FormData) {
+  const user = await me();
+  const convId = Number(formData.get("conversation_id")) || 0;
+  let toId = Number(formData.get("to")) || 0;
+  const ret = convId ? `/mensagens?c=${convId}` : `/pessoas/${toId}`;
+  requireVerified(user, ret);
+  const body = String(formData.get("body") ?? "").trim();
+  const problem = messageProblem(body);
+  if (problem) back(ret, "error", problem);
+  const limit = { action: "message", subject: `user:${user.id}`, ...MESSAGE_LIMIT };
+  const wait = await blockedFor([limit]);
+  if (wait) back(ret, "error", `Voce enviou muitas mensagens em pouco tempo. Aguarde ${wait} minuto${wait > 1 ? "s" : ""} e tente de novo.`);
+  const db = getDb();
+  let c: ConversationRow | undefined;
+  if (convId) {
+    c = await getConversation(convId, user.id);
+    if (!c) back("/mensagens", "error", "Conversa nao encontrada.");
+    toId = otherOf(c!, user.id) ?? 0;
+    if (!toId) back(ret, "error", "Esta conta foi excluida. Nao e possivel enviar mensagens.");
+  } else {
+    if (toId === user.id) back(ret, "error", "Voce nao pode enviar mensagem para si.");
+    if (!(await db.prepare("SELECT 1 FROM users WHERE id = ? AND account_status = 'active'").get(toId))) back("/mensagens", "error", "Pessoa nao encontrada.");
+    c = await conversationBetween(user.id, toId);
+  }
+  const direct = await canMessageDirect(user.id, toId);
+  let status: "open" | "requested" = "open";
+  if (!c) {
+    status = direct ? "open" : "requested";
+    const [a, b] = pair(user.id, toId);
+    await db.prepare("INSERT INTO conversations (user_a, user_b, status, requested_by) VALUES (?,?,?,?)").run(a, b, status, user.id);
+    c = await conversationBetween(user.id, toId);
+  } else if (c.status !== "open") {
+    if (!direct && c.status === "requested")
+      back(ret, "error", c.requested_by === user.id ? "Seu pedido de contato ainda nao foi aceito. Aguarde a resposta." : "Aceite o pedido de contato para responder.");
+    if (!direct && c.requested_by === user.id) back(ret, "error", "A pessoa nao aceitou o pedido de contato.");
+    await db.prepare("UPDATE conversations SET status = 'open' WHERE id = ?").run(c.id);
+  }
+  await db.prepare("INSERT INTO messages (conversation_id, sender_id, body) VALUES (?,?,?)").run(c!.id, user.id, body);
+  await db.prepare("UPDATE conversations SET last_message_at = datetime('now') WHERE id = ?").run(c!.id);
+  await recordAttempt("message", [limit.subject]);
+  if (status === "open") {
+    await notifyMessage(c!, toId, `Nova mensagem de ${user.name}`, `${user.name} enviou uma mensagem para voce.`);
+    redirect(`/mensagens?c=${c!.id}`);
+  }
+  await notifyMessage(c!, toId, `${user.name} pediu contato`, `${user.name} pediu contato com voce e enviou uma primeira mensagem.`);
+  back(`/mensagens?c=${c!.id}`, "msg", "Pedido de contato enviado. A conversa abre quando a pessoa aceitar.");
+}
+
+export async function respondContactRequest(formData: FormData) {
+  const user = await me();
+  const id = Number(formData.get("conversation_id"));
+  const c = await getConversation(id, user.id);
+  if (!c || c.status !== "requested" || c.requested_by === user.id) back("/mensagens", "error", "Pedido de contato nao encontrado.");
+  if (str(formData, "decision") === "accept") {
+    await getDb().prepare("UPDATE conversations SET status = 'open' WHERE id = ? AND status = 'requested'").run(id);
+    if (c!.requested_by) await notify(c!.requested_by, `${user.name} aceitou seu pedido de contato.`, `/mensagens?c=${id}`);
+    back(`/mensagens?c=${id}`, "msg", "Pedido aceito. Agora voces podem conversar.");
+  }
+  await getDb().prepare("UPDATE conversations SET status = 'declined' WHERE id = ? AND status = 'requested'").run(id);
+  back("/mensagens", "msg", "Pedido de contato recusado.");
 }

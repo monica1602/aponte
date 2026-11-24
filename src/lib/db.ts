@@ -449,6 +449,27 @@ CREATE TABLE IF NOT EXISTS project_member_invites (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(project_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS conversations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_a INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  user_b INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','requested','declined')),
+  requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  emailed_a_at TEXT,
+  emailed_b_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_message_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_a, user_b)
+);
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  body TEXT,
+  read_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
 CREATE TABLE IF NOT EXISTS notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
