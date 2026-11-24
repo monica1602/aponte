@@ -4,7 +4,7 @@ import { hashToken } from "@/lib/auth";
 import { sessionNeedsReaccept } from "@/lib/legal-acceptance";
 
 // Paginas abertas mesmo para quem ainda precisa aceitar uma versao nova dos documentos.
-const REACCEPT_FREE = /^\/(novos-termos|termos|privacidade|conduta|primeiro-acesso|login|signup|esqueci-senha|redefinir-senha|verificar-email|certificados|admin|auth|api)(\/|$)/;
+const REACCEPT_FREE = /^\/(novos-termos|termos|privacidade|conduta|primeiro-acesso|login|signup|esqueci-senha|redefinir-senha|verificar-email|certificados\/[^/]+|admin|auth|api)(\/|$)/;
 
 export async function proxy(request: NextRequest) {
   const h = request.headers;

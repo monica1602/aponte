@@ -30,7 +30,7 @@ import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
 import { eventHasHistory } from "./event-history";
 import { validCertificateTheme } from "./certificate-themes";
-import { workloadMinutes } from "./certificates";
+import { recordCertificateHistory, workloadMinutes } from "./certificates";
 import { revokeReason } from "./certificate-revoke";
 import { MEETING_COL, MEETING_TABLE, canConfirmMeeting, listMeetings, meetingPath, meetingStarted, meetingTime, parseMeetingRef, type Meeting, type MeetingKind } from "./meetings";
 import {
@@ -419,6 +419,7 @@ export async function deleteAccount(formData: FormData) {
   await getDb().prepare("DELETE FROM consent_events WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM data_requests WHERE user_id = ?").run(user.id);
   await getDb().prepare("DELETE FROM email_changes WHERE user_id = ?").run(user.id);
+  await getDb().prepare("DELETE FROM certificate_history WHERE certificate_id IN (SELECT id FROM certificates WHERE user_id = ?)").run(user.id);
   await getDb().prepare("DELETE FROM users WHERE id = ?").run(user.id);
   await alertAdmin(`Conta excluida pelo proprio usuario: ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   redirect(`/login?msg=${encodeURIComponent("Sua conta e seus dados foram excluidos.")}`);
@@ -1323,6 +1324,7 @@ export async function issueCertificate(formData: FormData) {
        VALUES (?,?,?,?,?,?,?,?,?,?)`
     ).run(recipientId, eventId, user.id, event!.title, code, snap.workload, snap.organizer, snap.responsible, snap.theme, snap.signature);
     await audit(user.id, "certificate.issued", "certificate", Number(result.lastInsertRowid));
+    await recordCertificateHistory(Number(result.lastInsertRowid), "issued", user.id);
   } catch {
     back("/dashboard", "error", "Ja existe certificado para esta pessoa neste evento.");
   }
@@ -1370,13 +1372,14 @@ export async function selfIssueCertificate(formData: FormData) {
        VALUES (?,?,?,?,?,?,?,?,?,?)`
     ).run(user.id, reg!.event_id, user.id, reg!.title, code, snap.workload, snap.organizer, snap.responsible, snap.theme, snap.signature);
     await audit(user.id, "certificate.self_issued", "certificate", Number(result.lastInsertRowid));
+    await recordCertificateHistory(Number(result.lastInsertRowid), "self_issued", user.id);
   } catch {
     back("/dashboard", "error", "Ja existe certificado seu neste evento.");
   }
   redirect(`/certificados/${code}`);
 }
 
-const REVOKE_RETURN = ["/dashboard", "/meus-eventos"];
+const REVOKE_RETURN = ["/dashboard", "/meus-eventos", "/certificados?aba=emitidos"];
 type RevokeTarget = { id: number; user_id: number; title: string; verification_code: string; revoked_at: string | null };
 
 /** Quem cadastrou o evento (ownerId) ou a administracao (ownerId null) revoga ou desfaz a revogacao. */
@@ -1400,6 +1403,7 @@ async function applyRevoke(formData: FormData, ownerId: number | null, ret: stri
   ).run(ownerId, parsed.reason, c.id);
   if (!done.changes) back(ret, "msg", "Este certificado ja estava revogado.");
   await audit(ownerId, ownerId === null ? "certificate.revoked_by_admin" : "certificate.revoked", "certificate", c.id);
+  await recordCertificateHistory(c.id, "revoked", ownerId, ownerId === null, parsed.reason);
   const link = `/certificados/${c.verification_code}`;
   const text = `Seu certificado de "${c.title}" foi revogado ${ownerId === null ? "pela administracao" : "pela organizacao do evento"}. Motivo: ${parsed.reason}.`;
   await notify(c.user_id, text, link);
@@ -1412,6 +1416,7 @@ async function applyUnrevoke(formData: FormData, ownerId: number | null, ret: st
   const done = await getDb().prepare("UPDATE certificates SET revoked_at = NULL WHERE id = ? AND revoked_at IS NOT NULL").run(c.id);
   if (!done.changes) back(ret, "msg", "Este certificado ja estava valido.");
   await audit(ownerId, ownerId === null ? "certificate.unrevoked_by_admin" : "certificate.unrevoked", "certificate", c.id);
+  await recordCertificateHistory(c.id, "unrevoked", ownerId, ownerId === null);
   const link = `/certificados/${c.verification_code}`;
   const text = `A revogacao do seu certificado de "${c.title}" foi desfeita. Ele voltou a ser valido, com o mesmo codigo.`;
   await notify(c.user_id, text, link);

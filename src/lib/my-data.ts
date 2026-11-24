@@ -3,6 +3,7 @@ import { getDb } from "./db";
 import { hashToken } from "./reset-token";
 import { consentHistory } from "./consents";
 import { legalAcceptanceHistory } from "./legal-acceptance";
+import { historyLabel, type HistoryEntry } from "./certificate-history";
 
 export const REQUEST_KIND_PT = {
   confirmacao: "Confirmar se a Ponte trata meus dados",
@@ -44,6 +45,7 @@ export const MY_DATA_SECTIONS = {
   consentimentos: "Consentimentos",
   inscricoes_em_eventos: "Inscricoes e presenca em eventos",
   certificados: "Certificados",
+  historico_dos_certificados: "Linha do tempo dos certificados",
   eventos_organizados: "Eventos organizados",
   mentorias: "Mentorias",
   encontros_de_mentoria: "Encontros de mentoria",
@@ -95,6 +97,11 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
        FROM event_registrations r JOIN events e ON e.id = r.event_id WHERE r.user_id = ? ORDER BY e.starts_at DESC`
     ),
     certificados: await all("SELECT title, verification_code, issued_at, workload_minutes, organizer_name, responsible_name, theme, responsible_signature, revoked_at, revoke_reason FROM certificates WHERE user_id = ? ORDER BY issued_at DESC"),
+    historico_dos_certificados: ((await db.prepare(
+      `SELECT c.verification_code, h.action, h.by_admin, h.reason, h.created_at, a.name AS actor_name
+       FROM certificate_history h JOIN certificates c ON c.id = h.certificate_id LEFT JOIN users a ON a.id = h.actor_id
+       WHERE c.user_id = ? ORDER BY h.created_at, h.id`
+    ).all(userId)) as unknown as (HistoryEntry & { verification_code: string })[]).map((h) => ({ codigo: h.verification_code, data: h.created_at, evento: historyLabel(h) })),
     eventos_organizados: await all("SELECT title, starts_at, ends_at, modality, location, status, certificate_theme, created_at FROM events WHERE owner_id = ? ORDER BY starts_at DESC"),
     mentorias: await all(
       `SELECT CASE WHEN m.mentor_id = ? THEN 'mentor' ELSE 'mentorado' END AS meu_papel, o.name AS outra_pessoa, m.status, m.created_at

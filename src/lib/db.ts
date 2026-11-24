@@ -321,6 +321,16 @@ CREATE TABLE IF NOT EXISTS certificates (
   UNIQUE(user_id, event_id),
   UNIQUE(user_id, mentorship_id)
 );
+CREATE TABLE IF NOT EXISTS certificate_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  certificate_id INTEGER NOT NULL REFERENCES certificates(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  by_admin INTEGER NOT NULL DEFAULT 0,
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_certificate_history_certificate ON certificate_history(certificate_id);
 CREATE TABLE IF NOT EXISTS auth_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   action TEXT NOT NULL,
@@ -552,6 +562,7 @@ async function init() {
     await upgradeDemoPasswords(db);
     await backfillLegalAcceptances(db);
     await backfillConsents(db);
+    await backfillCertificateHistory(db);
   });
 }
 
@@ -620,6 +631,31 @@ async function keepCertificatesWithoutIssuer(db: Db) {
 }
 
 /** Contas com aceite gravado antes do versionamento recebem a versao 1, com a data original. */
+/** Linha do tempo dos certificados emitidos antes dela: auditoria, emissao e revogacao atual. */
+async function backfillCertificateHistory(db: Db) {
+  await db.exec(`INSERT INTO certificate_history (certificate_id, action, actor_id, by_admin, reason, created_at)
+    SELECT a.entity_id,
+      CASE a.action WHEN 'certificate.issued' THEN 'issued' WHEN 'certificate.self_issued' THEN 'self_issued'
+        WHEN 'certificate.revoked' THEN 'revoked' WHEN 'certificate.revoked_by_admin' THEN 'revoked' ELSE 'unrevoked' END,
+      a.actor_id, CASE WHEN a.action LIKE '%by_admin' THEN 1 ELSE 0 END, NULL, a.created_at
+    FROM audit_log a JOIN certificates c ON c.id = a.entity_id
+    WHERE a.entity_type = 'certificate'
+      AND a.action IN ('certificate.issued','certificate.self_issued','certificate.revoked','certificate.revoked_by_admin','certificate.unrevoked','certificate.unrevoked_by_admin')
+      AND NOT EXISTS (SELECT 1 FROM certificate_history h WHERE h.certificate_id = c.id)
+    ORDER BY a.id;`);
+  await db.exec(`INSERT INTO certificate_history (certificate_id, action, actor_id, by_admin, reason, created_at)
+    SELECT c.id, CASE WHEN c.issued_by = c.user_id THEN 'self_issued' ELSE 'issued' END, c.issued_by, 0, NULL, c.issued_at
+    FROM certificates c
+    WHERE NOT EXISTS (SELECT 1 FROM certificate_history h WHERE h.certificate_id = c.id AND h.action IN ('issued','self_issued'));`);
+  await db.exec(`INSERT INTO certificate_history (certificate_id, action, actor_id, by_admin, reason, created_at)
+    SELECT c.id, 'revoked', c.revoked_by, CASE WHEN c.revoked_by IS NULL THEN 1 ELSE 0 END, c.revoke_reason, c.revoked_at
+    FROM certificates c
+    WHERE c.revoked_at IS NOT NULL AND NOT EXISTS (SELECT 1 FROM certificate_history h WHERE h.certificate_id = c.id AND h.action = 'revoked');`);
+  await db.exec(`UPDATE certificate_history SET reason = (SELECT c.revoke_reason FROM certificates c WHERE c.id = certificate_history.certificate_id AND c.revoked_at IS NOT NULL)
+    WHERE action = 'revoked' AND reason IS NULL
+      AND id = (SELECT MAX(h.id) FROM certificate_history h WHERE h.certificate_id = certificate_history.certificate_id AND h.action IN ('revoked','unrevoked'));`);
+}
+
 async function backfillLegalAcceptances(db: Db) {
   const docs: [string, string][] = [
     ["terms", "employment_terms_accepted_at"],

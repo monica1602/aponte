@@ -43,7 +43,8 @@ function accountNav(role: string) {
       { href: "/meus-projetos", label: "Projetos mentorados" },
       OPEN_SOURCE,
       { href: "/meus-eventos", label: "Meus eventos" },
-      { href: "/eventos-participantes", label: "Eventos participantes" }];
+      { href: "/eventos-participantes", label: "Eventos participantes" },
+      { href: "/certificados", label: "Certificados" }];
   if (role === "mentee")
     return [...base,
       { href: "/aprendizado", label: "Aprendizado" },
@@ -52,7 +53,8 @@ function accountNav(role: string) {
       { href: "/empresas", label: "Empresas" },
       { href: "/meus-projetos", label: "Projetos proprios" },
       OPEN_SOURCE,
-      { href: "/meus-eventos", label: "Eventos participantes" }];
+      { href: "/meus-eventos", label: "Eventos participantes" },
+      { href: "/certificados", label: "Certificados" }];
   return [...base,
     { href: "/minha-rede?aba=mentores", label: "Mentores" },
     { href: "/minha-rede?aba=mentorados", label: "Mentorados" },
@@ -60,7 +62,8 @@ function accountNav(role: string) {
     { href: "/meus-projetos", label: "Meus projetos" },
     OPEN_SOURCE,
     { href: "/meus-eventos", label: "Meus eventos" },
-    { href: "/eventos-participantes", label: "Eventos participantes" }];
+    { href: "/eventos-participantes", label: "Eventos participantes" },
+      { href: "/certificados", label: "Certificados" }];
 }
 
 export default async function RootLayout({
