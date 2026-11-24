@@ -71,3 +71,11 @@ test("sem vaga livre ou com o evento encerrado, ninguem e promovido", async () =
   assert.equal((await waitlist.promoteWaitlist(ended, null)).length, 0);
   assert.equal(await statusOf(old), "waitlist");
 });
+
+test("sem limite de vagas, toda a lista de espera e promovida", async () => {
+  const ev = await event({ capacity: null });
+  const a = await reg(ev, "joao@email.com", "waitlist", "2026-01-01 10:00:00");
+  const b = await reg(ev, "maria@email.com", "waitlist", "2026-01-02 10:00:00");
+  const promoted = await waitlist.promoteWaitlist(ev, null);
+  assert.deepEqual(promoted.map((p) => p.registrationId).sort(), [a, b].sort());
+});

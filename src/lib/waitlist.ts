@@ -9,7 +9,7 @@ export async function promoteWaitlist(eventId: number, actorId: number | null, n
   const event = (await db
     .prepare("SELECT capacity, require_approval, ends_at, status FROM events WHERE id = ?")
     .get(eventId)) as { capacity: number | null; require_approval: number; ends_at: string; status: string } | undefined;
-  if (!event || event.status !== "published" || event.capacity === null) return [];
+  if (!event || event.status !== "published") return [];
   if (eventTimeMs(event.ends_at) <= now) return [];
   const status = event.require_approval ? "requested" : "approved";
   const promoted: Promoted[] = [];
@@ -17,7 +17,7 @@ export async function promoteWaitlist(eventId: number, actorId: number | null, n
     const filled = (await db
       .prepare("SELECT COUNT(*) AS count FROM event_registrations WHERE event_id = ? AND status IN ('requested','approved')")
       .get(eventId)) as { count: number };
-    if (Number(filled.count) >= event.capacity) break;
+    if (event.capacity !== null && Number(filled.count) >= event.capacity) break;
     const next = (await db
       .prepare(
         `SELECT r.id, r.user_id, u.name FROM event_registrations r JOIN users u ON u.id = r.user_id

@@ -9,6 +9,7 @@ import { CancelRegistration, canCancelRegistration } from "@/components/cancel-r
 import { DeleteConfirm } from "@/components/delete-confirm";
 import { CancelEvent } from "@/components/cancel-event";
 import { Badge, Card, Flash, btnCls, btnSecondaryCls } from "@/components/ui";
+import { eventEnded } from "@/lib/event-time";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Evento — Ponte" };
@@ -67,6 +68,7 @@ export default async function EventoPage({
         <Card><dt className="text-xs text-muted">Inscricao</dt><dd className="mt-1 text-sm">{e.require_approval ? "Sujeita a aprovacao do organizador" : "Confirmacao automatica"}</dd></Card>
       </dl>
       {e.description && <p className="mt-6 whitespace-pre-line leading-relaxed text-fg/85">{e.description}</p>}
+      {user?.id === e.owner_id && !cancelledEvent && !eventEnded(e.ends_at) && <Link href={`/meus-eventos/${e.id}/editar`} className={`${btnSecondaryCls} mt-8`}>Editar evento</Link>}
       {user?.id === e.owner_id && !cancelledEvent && Number(e.history) > 0 && <CancelEvent eventId={e.id} returnTo={ret} className="mt-8" />}
       {user?.id === e.owner_id && !cancelledEvent && Number(e.history) === 0 && (
         <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: ret }} label="Excluir evento" className="mt-8">

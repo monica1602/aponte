@@ -8,11 +8,12 @@ import { CancelEvent } from "@/components/cancel-event";
 import { ParticipantEvents, REGISTRATION_STATUS as STATUS } from "@/components/participant-events";
 import { deleteEvent, reviewEventRegistration } from "@/lib/actions";
 import { Badge, Card, Empty, Flash, PageHeader, btnSecondaryCls } from "@/components/ui";
+import { eventEnded } from "@/lib/event-time";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Meus eventos — Ponte" };
 
-type Ev = { id: number; title: string; starts_at: string; modality: string; capacity: number | null; status: string; certificates: number };
+type Ev = { id: number; title: string; starts_at: string; ends_at: string; modality: string; capacity: number | null; status: string; certificates: number };
 type Reg = { id: number; event_id: number; name: string; email: string; role: string; status: string; checked_in_at: string | null; checked_out_at: string | null; safe_home_at: string | null };
 
 function spShort(at: string): string {
@@ -32,7 +33,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
   const user = await getSessionUser();
   if (!user) redirect("/login");
   const db = getDb();
-  const events = (await db.prepare("SELECT e.id, e.title, e.starts_at, e.modality, e.capacity, e.status, (SELECT COUNT(*) FROM certificates c WHERE c.event_id = e.id) AS certificates FROM events e WHERE e.owner_id = ? ORDER BY e.starts_at DESC").all(user.id)) as unknown as Ev[];
+  const events = (await db.prepare("SELECT e.id, e.title, e.starts_at, e.ends_at, e.modality, e.capacity, e.status, (SELECT COUNT(*) FROM certificates c WHERE c.event_id = e.id) AS certificates FROM events e WHERE e.owner_id = ? ORDER BY e.starts_at DESC").all(user.id)) as unknown as Ev[];
   const regs = (await db.prepare(
     `SELECT r.id, r.event_id, u.name, u.email, u.role, r.status, r.checked_in_at, r.checked_out_at, r.safe_home_at FROM event_registrations r
      JOIN users u ON u.id = r.user_id JOIN events e ON e.id = r.event_id
@@ -88,6 +89,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
                       </table>
                     </div>
                   )}
+                  {e.status !== "cancelled" && !eventEnded(e.ends_at) && <Link href={`/meus-eventos/${e.id}/editar`} className={`${btnSecondaryCls} mt-4`}>Editar evento</Link>}
                   {e.status !== "cancelled" && (list.length > 0 || Number(e.certificates) > 0) && <CancelEvent eventId={e.id} returnTo="/meus-eventos" className="mt-4" />}
                   {e.status !== "cancelled" && list.length === 0 && Number(e.certificates) === 0 && (
                     <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: "/meus-eventos" }} label="Excluir evento" className="mt-4">

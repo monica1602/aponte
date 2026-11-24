@@ -21,7 +21,7 @@ import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
-import { checkInWindow, checkOutOpen, eventStarted, spTime } from "./event-time";
+import { checkInWindow, checkOutOpen, eventEnded, eventStarted, spTime } from "./event-time";
 import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate-limit";
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
 import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
@@ -730,6 +730,80 @@ export async function createEvent(formData: FormData) {
   const eventId = Number(result.lastInsertRowid);
   await audit(user.id, "event.created", "event", eventId);
   back("/dashboard", "msg", "Evento publicado e pronto para receber inscricoes.");
+}
+
+type EditableEvent = {
+  id: number; title: string; owner_id: number; status: string; modality: string; starts_at: string; ends_at: string;
+  online_url: string; location: string; city: string; state: string;
+};
+
+export async function updateEvent(formData: FormData) {
+  const user = await me();
+  const id = Number(formData.get("event_id"));
+  const ret = `/meus-eventos/${Number.isInteger(id) && id > 0 ? id : 0}/editar`;
+  const db = getDb();
+  const event = (await db.prepare(
+    "SELECT id, title, owner_id, status, modality, starts_at, ends_at, online_url, location, city, state FROM events WHERE id = ? AND owner_id = ?"
+  ).get(id, user.id)) as EditableEvent | undefined;
+  if (!event) back("/meus-eventos", "error", "Evento nao encontrado ou voce nao e quem o cadastrou.");
+  if (event.status === "cancelled") back("/meus-eventos", "error", "Evento cancelado nao pode ser editado.");
+  if (eventEnded(event.ends_at)) back("/meus-eventos", "error", "O evento ja terminou e nao pode mais ser editado.");
+
+  const title = str(formData, "title");
+  const modality = str(formData, "modality");
+  const startsAt = str(formData, "starts_at");
+  const endsAt = str(formData, "ends_at");
+  const onlineUrl = bareUrl(str(formData, "online_url"));
+  const location = str(formData, "location");
+  const city = str(formData, "city");
+  const state = str(formData, "state").toUpperCase().slice(0, 2);
+  const capacityText = str(formData, "capacity");
+  const capacity = capacityText ? Number(capacityText) : null;
+
+  if (!title || !EVENT_MODALITIES.includes(modality) || !validDateTime(startsAt) || !validDateTime(endsAt)) {
+    back(ret, "error", "Preencha titulo, modalidade e datas validas.");
+  }
+  if (Date.parse(endsAt) <= Date.parse(startsAt)) back(ret, "error", "O termino deve acontecer depois do inicio.");
+  if ((modality === "online" || modality === "hybrid") && !onlineUrl) back(ret, "error", "Informe o link para o evento online.");
+  if (onlineUrl && !LINK_RE.test(onlineUrl)) {
+    back(ret, "error", "Link do encontro: informe um endereco valido, por exemplo meet.google.com/abc-defg-hij");
+  }
+  if ((modality === "in_person" || modality === "hybrid") && !location) back(ret, "error", "Informe o local do evento presencial.");
+  if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) {
+    back(ret, "error", "A capacidade deve ser um numero inteiro maior que zero.");
+  }
+  const approved = (await db.prepare("SELECT COUNT(*) AS count FROM event_registrations WHERE event_id = ? AND status = 'approved'").get(id)) as { count: number };
+  if (capacity !== null && capacity < Number(approved.count)) {
+    back(ret, "error", `O evento ja tem ${approved.count} inscricoes confirmadas. As vagas nao podem ficar abaixo disso.`);
+  }
+
+  await db.prepare(
+    `UPDATE events SET title = ?, description = ?, modality = ?, starts_at = ?, ends_at = ?, online_url = ?, location = ?, capacity = ?,
+       require_approval = ?, category = ?, city = ?, state = ? WHERE id = ? AND owner_id = ?`
+  ).run(
+    title, str(formData, "description"), modality, startsAt, endsAt, onlineUrl, location, capacity,
+    formData.get("require_approval") === "on" ? 1 : 0, str(formData, "category"), city, state, id, user.id
+  );
+  await audit(user.id, "event.updated", "event", id);
+
+  const changes: string[] = [];
+  if (event.starts_at !== startsAt || event.ends_at !== endsAt) changes.push("data e horario");
+  if (event.modality !== modality) changes.push("modalidade");
+  if (event.online_url !== onlineUrl) changes.push("link");
+  if (event.location !== location || event.city !== city || event.state !== state) changes.push("local");
+  if (changes.length) {
+    const people = (await db.prepare(
+      "SELECT user_id FROM event_registrations WHERE event_id = ? AND status IN ('requested','approved','waitlist')"
+    ).all(id)) as unknown as { user_id: number }[];
+    const text = `O evento "${title}" foi alterado pela organizacao: ${changes.join(", ")}. Confira os detalhes na pagina do evento.`;
+    for (const p of people) {
+      await notify(p.user_id, text, `/eventos/${id}`);
+      await emailUser(p.user_id, `Evento alterado: ${title}`, text, "Ver evento", `/eventos/${id}`, "network");
+    }
+  }
+  const promoted = await fillFromWaitlist(id, title, user.id, user.id);
+  const extra = promoted.length ? ` ${promoted.length} pessoa(s) sairam da lista de espera.` : "";
+  back("/meus-eventos", "msg", `Evento "${title}" atualizado.${changes.length ? " As pessoas inscritas foram avisadas." : ""}${extra}`);
 }
 
 export async function deleteEvent(formData: FormData) {

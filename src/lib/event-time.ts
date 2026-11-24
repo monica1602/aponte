@@ -25,3 +25,7 @@ const CHECKOUT_AFTER_END_MS = 2 * 60 * 60 * 1000;
 export function checkOutOpen(endsAt: string, now = Date.now()): boolean {
   return now <= eventTimeMs(endsAt) + CHECKOUT_AFTER_END_MS;
 }
+
+export function eventEnded(endsAt: string, now = Date.now()): boolean {
+  return eventTimeMs(endsAt) <= now;
+}

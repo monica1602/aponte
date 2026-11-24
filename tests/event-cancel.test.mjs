@@ -19,3 +19,11 @@ test("check-out vale ate 2 horas depois do fim do evento", async () => {
   assert.equal(checkOutOpen(brt(now - 90 * 60 * 1000), now), true);
   assert.equal(checkOutOpen(brt(now - 3 * HOUR), now), false);
 });
+
+test("edicao do evento fecha no termino", async () => {
+  const { eventEnded, eventTimeMs } = await import("../src/lib/event-time.ts");
+  const end = "2026-11-24T18:00";
+  assert.equal(eventEnded(end, eventTimeMs(end) - 60000), false);
+  assert.equal(eventEnded(end, eventTimeMs(end)), true);
+  assert.equal(eventEnded(end, eventTimeMs(end) + 60000), true);
+});
