@@ -850,6 +850,7 @@ export async function deleteEvent(formData: FormData) {
     back(ret, "msg", `Evento "${event.title}" cancelado. O historico foi mantido.`);
   }
   if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para excluir o evento.");
+  await db.prepare("DELETE FROM attachments WHERE event_id = ?").run(id);
   await db.prepare("DELETE FROM events WHERE id = ?").run(id);
   for (const p of people) await notify(p.user_id, `O evento "${event!.title}" foi cancelado e excluido pela organizacao.`, "/eventos");
   await audit(user.id, "event.delete", "event", id);
