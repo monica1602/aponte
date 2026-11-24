@@ -212,3 +212,19 @@ export async function getPersonDetail(id: number) {
   ]);
   return { user, row, contributions, registrations, goals, acceptances: await legalAcceptanceHistory(id), consents: await consentHistory(id) };
 }
+
+export type AdminCertificate = {
+  id: number; verification_code: string; title: string; issued_at: string; recipient_name: string;
+  revoked_at: string | null; revoked_by: number | null; revoke_reason: string | null;
+};
+
+/** Certificados mais recentes, com busca por codigo, nome da pessoa ou titulo do evento. */
+export async function listCertificates(q: string): Promise<AdminCertificate[]> {
+  const term = `%${q.trim().toLowerCase()}%`;
+  return (await getDb().prepare(
+    `SELECT c.id, c.verification_code, c.title, c.issued_at, u.name AS recipient_name, c.revoked_at, c.revoked_by, c.revoke_reason
+     FROM certificates c JOIN users u ON u.id = c.user_id
+     WHERE LOWER(c.verification_code) LIKE ? OR LOWER(u.name) LIKE ? OR LOWER(c.title) LIKE ?
+     ORDER BY c.issued_at DESC, c.id DESC LIMIT 200`
+  ).all(term, term, term)) as unknown as AdminCertificate[];
+}

@@ -31,6 +31,7 @@ import { promoteWaitlist } from "./waitlist";
 import { eventHasHistory } from "./event-history";
 import { validCertificateTheme } from "./certificate-themes";
 import { workloadMinutes } from "./certificates";
+import { revokeReason } from "./certificate-revoke";
 import { MEETING_COL, MEETING_TABLE, canConfirmMeeting, listMeetings, meetingPath, meetingStarted, meetingTime, parseMeetingRef, type Meeting, type MeetingKind } from "./meetings";
 import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
@@ -1373,6 +1374,71 @@ export async function selfIssueCertificate(formData: FormData) {
     back("/dashboard", "error", "Ja existe certificado seu neste evento.");
   }
   redirect(`/certificados/${code}`);
+}
+
+const REVOKE_RETURN = ["/dashboard", "/meus-eventos"];
+type RevokeTarget = { id: number; user_id: number; title: string; verification_code: string; revoked_at: string | null };
+
+/** Quem cadastrou o evento (ownerId) ou a administracao (ownerId null) revoga ou desfaz a revogacao. */
+async function revokeTarget(formData: FormData, ownerId: number | null, ret: string): Promise<RevokeTarget> {
+  const id = Number(formData.get("certificate_id"));
+  const c = (await getDb().prepare(
+    `SELECT c.id, c.user_id, c.title, c.verification_code, c.revoked_at FROM certificates c LEFT JOIN events e ON e.id = c.event_id
+     WHERE c.id = ?${ownerId === null ? "" : " AND e.owner_id = ?"}`
+  ).get(...(ownerId === null ? [id] : [id, ownerId]))) as RevokeTarget | undefined;
+  if (!c) back(ret, "error", "Certificado nao encontrado ou voce nao pode altera-lo.");
+  return c;
+}
+
+async function applyRevoke(formData: FormData, ownerId: number | null, ret: string): Promise<never> {
+  const c = await revokeTarget(formData, ownerId, ret);
+  if (c.revoked_at) back(ret, "msg", "Este certificado ja estava revogado.");
+  const parsed = revokeReason(str(formData, "reason"), str(formData, "details"));
+  if ("error" in parsed) back(ret, "error", parsed.error);
+  const done = await getDb().prepare(
+    "UPDATE certificates SET revoked_at = datetime('now'), revoked_by = ?, revoke_reason = ? WHERE id = ? AND revoked_at IS NULL"
+  ).run(ownerId, parsed.reason, c.id);
+  if (!done.changes) back(ret, "msg", "Este certificado ja estava revogado.");
+  await audit(ownerId, ownerId === null ? "certificate.revoked_by_admin" : "certificate.revoked", "certificate", c.id);
+  const link = `/certificados/${c.verification_code}`;
+  const text = `Seu certificado de "${c.title}" foi revogado ${ownerId === null ? "pela administracao" : "pela organizacao do evento"}. Motivo: ${parsed.reason}.`;
+  await notify(c.user_id, text, link);
+  await emailUser(c.user_id, `Certificado revogado: ${c.title}`, text, "Ver certificado", link, "network");
+  back(ret, "msg", "Certificado revogado. A pessoa foi avisada.");
+}
+
+async function applyUnrevoke(formData: FormData, ownerId: number | null, ret: string): Promise<never> {
+  const c = await revokeTarget(formData, ownerId, ret);
+  const done = await getDb().prepare("UPDATE certificates SET revoked_at = NULL WHERE id = ? AND revoked_at IS NOT NULL").run(c.id);
+  if (!done.changes) back(ret, "msg", "Este certificado ja estava valido.");
+  await audit(ownerId, ownerId === null ? "certificate.unrevoked_by_admin" : "certificate.unrevoked", "certificate", c.id);
+  const link = `/certificados/${c.verification_code}`;
+  const text = `A revogacao do seu certificado de "${c.title}" foi desfeita. Ele voltou a ser valido, com o mesmo codigo.`;
+  await notify(c.user_id, text, link);
+  await emailUser(c.user_id, `Certificado valido de novo: ${c.title}`, text, "Ver certificado", link, "network");
+  back(ret, "msg", "Revogacao desfeita. O certificado voltou a ser valido e a pessoa foi avisada.");
+}
+
+export async function revokeCertificate(formData: FormData) {
+  const user = await me();
+  const ret = REVOKE_RETURN.includes(str(formData, "return")) ? str(formData, "return") : "/meus-eventos";
+  await applyRevoke(formData, user.id, ret);
+}
+
+export async function unrevokeCertificate(formData: FormData) {
+  const user = await me();
+  const ret = REVOKE_RETURN.includes(str(formData, "return")) ? str(formData, "return") : "/meus-eventos";
+  await applyUnrevoke(formData, user.id, ret);
+}
+
+export async function adminRevokeCertificate(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  await applyRevoke(formData, null, "/admin/certificados");
+}
+
+export async function adminUnrevokeCertificate(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  await applyUnrevoke(formData, null, "/admin/certificados");
 }
 
 async function returnPath(): Promise<string> {

@@ -11,6 +11,8 @@ import { listMeetings, type Meeting } from "@/lib/meetings";
 import { CancelRegistration, canCancelRegistration } from "@/components/cancel-registration";
 import { checkOutOpen } from "@/lib/event-time";
 import { canIssueCertificate } from "@/lib/retention";
+import { CertificateRevoke } from "@/components/certificate-revoke";
+import { revokedDate } from "@/lib/certificate-revoke";
 import {
   updateProfile,
   respondMentorship,
@@ -24,6 +26,8 @@ import {
   createMentee,
   createEvent,
   issueCertificate,
+  revokeCertificate,
+  unrevokeCertificate,
   selfIssueCertificate,
   removeAvailability,
   reviewEventRegistration,
@@ -83,6 +87,7 @@ type RegistrationRow = {
   id: number; event_id: number; title: string; modality: string; starts_at: string; ends_at: string;
   status: string; checked_in_at: string | null; checked_out_at: string | null; safe_home_at: string | null;
   participant_id: number; participant_name: string; certificate_code: string | null; event_status: string;
+  certificate_id: number | null; certificate_revoked_at: string | null; certificate_revoke_reason: string | null;
 };
 type MeetingLink = LinkRow & { mentorship_id: number };
 
@@ -155,6 +160,7 @@ function AvailabilityEditor({ rows }: { rows: AvailabilityRow[] }) {
 }
 
 function MyCertificate({ r }: { r: RegistrationRow }) {
+  if (r.certificate_code && r.certificate_revoked_at) return <p className="mt-2 text-xs"><Badge kind="revoked" label="Certificado revogado" /> <span className="text-red-300">em {revokedDate(r.certificate_revoked_at)}{r.certificate_revoke_reason ? `. Motivo: ${r.certificate_revoke_reason}` : ""}</span> <Link href={`/certificados/${r.certificate_code}`} className="text-accent hover:underline">Ver</Link></p>;
   if (r.certificate_code) return <p className="mt-2 flex gap-3 text-xs"><Link href={`/certificados/${r.certificate_code}`} className="text-accent hover:underline">Ver meu certificado →</Link><a href={`/certificados/${r.certificate_code}/pdf`} download className="text-accent hover:underline">Baixar PDF</a></p>;
   if (!r.checked_in_at || !canIssueCertificate(r.ends_at) || r.event_status === "cancelled") return null;
   return <form action={selfIssueCertificate} className="mt-2"><input type="hidden" name="registration_id" value={r.id} /><button className="text-xs text-accent hover:underline">Emitir meu certificado</button></form>;
@@ -175,7 +181,7 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
               {r.status === "requested" && <form action={reviewEventRegistration}><input type="hidden" name="registration_id" value={r.id} /><button name="decision" value="approve" className="text-emerald-300 hover:underline">aprovar</button><button name="decision" value="decline" className="ml-2 text-red-300 hover:underline">recusar</button></form>}
               {r.status === "approved" && !r.checked_in_at && <form action={checkInEvent}><input type="hidden" name="registration_id" value={r.id} /><button className="text-cyan hover:underline">check-in</button></form>}
               {r.status === "approved" && r.checked_in_at && !r.checked_out_at && checkOutOpen(r.ends_at) && <form action={checkOutEvent}><input type="hidden" name="registration_id" value={r.id} /><button className="text-cyan hover:underline">check-out</button></form>}
-              {r.checked_in_at && canIssueCertificate(r.ends_at) && <form action={issueCertificate}><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="recipient_id" value={r.participant_id} /><button className="text-accent hover:underline">emitir certificado</button></form>}
+              {r.certificate_id && r.certificate_code ? <CertificateRevoke id={r.certificate_id} code={r.certificate_code} revokedAt={r.certificate_revoked_at} reason={r.certificate_revoke_reason} returnTo="/dashboard" revoke={revokeCertificate} unrevoke={unrevokeCertificate} /> : r.checked_in_at && canIssueCertificate(r.ends_at) && <form action={issueCertificate}><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="recipient_id" value={r.participant_id} /><button className="text-accent hover:underline">emitir certificado</button></form>}
             </div>}</li>)}</ul>}
           </li>;
         }) : registrations.map((r) => <li key={r.id} className="rounded-xl border border-line p-3"><p className="font-medium">{r.title}</p><p className="mt-1 text-xs text-muted">{new Date(r.starts_at).toLocaleString("pt-BR")} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} /></p>{r.event_status === "cancelled" && <p className="mt-2 text-xs text-red-300">Evento cancelado pela organizacao.</p>}<PresenceActions r={r} returnTo="/dashboard" /><MyCertificate r={r} />{canCancelRegistration(r) && <CancelRegistration eventId={r.event_id} returnTo="/dashboard" label="Cancelar inscricao" className="mt-3" />}</li>)}</ul>
@@ -362,14 +368,20 @@ export default async function DashboardPage({
     : [];
   const myRegistrations = (await db.prepare(
     `SELECT r.*, e.title, e.modality, e.starts_at, e.ends_at, e.status AS event_status, u.id AS participant_id, u.name AS participant_name,
-       (SELECT c.verification_code FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_code
+       (SELECT c.verification_code FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_code,
+       (SELECT c.id FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_id,
+       (SELECT c.revoked_at FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_revoked_at,
+       (SELECT c.revoke_reason FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_revoke_reason
      FROM event_registrations r JOIN events e ON e.id = r.event_id JOIN users u ON u.id = r.user_id
      WHERE r.user_id = ? AND r.status IN ('requested','approved','waitlist') ORDER BY e.starts_at DESC`
   ).all(user.id)) as unknown as RegistrationRow[];
   const eventRegistrations = isMentorSide
     ? (await db.prepare(
         `SELECT r.*, e.title, e.modality, e.starts_at, e.ends_at, e.status AS event_status, u.id AS participant_id, u.name AS participant_name,
-       (SELECT c.verification_code FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_code
+       (SELECT c.verification_code FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_code,
+       (SELECT c.id FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_id,
+       (SELECT c.revoked_at FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_revoked_at,
+       (SELECT c.revoke_reason FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_revoke_reason
          FROM event_registrations r JOIN events e ON e.id = r.event_id JOIN users u ON u.id = r.user_id
          WHERE e.owner_id = ? AND r.status IN ('requested','approved','waitlist') ORDER BY e.starts_at DESC, r.created_at DESC`
       ).all(user.id) as unknown as RegistrationRow[])

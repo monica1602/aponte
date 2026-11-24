@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request, { params }: { params: Promise<{ code: string }> }) {
   const certificate = await loadCertificate((await params).code);
   if (!certificate) return new Response("Certificado nao encontrado.", { status: 404 });
+  if (certificate.revoked_at) return new Response("Certificado revogado: este certificado nao e valido.", { status: 410 });
   const site = await siteUrl();
   const url = `${site}/certificados/${certificate.verification_code}`;
   const pdf = await signCertificatePdf(await certificatePdf(certificate, url), site);

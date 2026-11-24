@@ -6,7 +6,8 @@ import { getDb } from "@/lib/db";
 import { DeleteConfirm } from "@/components/delete-confirm";
 import { CancelEvent } from "@/components/cancel-event";
 import { ParticipantEvents, REGISTRATION_STATUS as STATUS } from "@/components/participant-events";
-import { deleteEvent, reviewEventRegistration } from "@/lib/actions";
+import { deleteEvent, revokeCertificate, reviewEventRegistration, unrevokeCertificate } from "@/lib/actions";
+import { CertificateRevoke } from "@/components/certificate-revoke";
 import { Badge, Card, Empty, Flash, PageHeader, btnSecondaryCls } from "@/components/ui";
 import { eventEnded } from "@/lib/event-time";
 
@@ -14,7 +15,8 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Meus eventos — Ponte" };
 
 type Ev = { id: number; title: string; starts_at: string; ends_at: string; modality: string; capacity: number | null; status: string; certificates: number };
-type Reg = { id: number; event_id: number; name: string; email: string; role: string; status: string; checked_in_at: string | null; checked_out_at: string | null; safe_home_at: string | null };
+type Reg = { id: number; event_id: number; name: string; email: string; role: string; status: string; checked_in_at: string | null; checked_out_at: string | null; safe_home_at: string | null;
+  certificate_id: number | null; certificate_code: string | null; certificate_revoked_at: string | null; certificate_revoke_reason: string | null };
 
 function spShort(at: string): string {
   const d = new Date(`${at.replace(" ", "T")}Z`);
@@ -35,8 +37,11 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
   const db = getDb();
   const events = (await db.prepare("SELECT e.id, e.title, e.starts_at, e.ends_at, e.modality, e.capacity, e.status, (SELECT COUNT(*) FROM certificates c WHERE c.event_id = e.id) AS certificates FROM events e WHERE e.owner_id = ? ORDER BY e.starts_at DESC").all(user.id)) as unknown as Ev[];
   const regs = (await db.prepare(
-    `SELECT r.id, r.event_id, u.name, u.email, u.role, r.status, r.checked_in_at, r.checked_out_at, r.safe_home_at FROM event_registrations r
+    `SELECT r.id, r.event_id, u.name, u.email, u.role, r.status, r.checked_in_at, r.checked_out_at, r.safe_home_at,
+       c.id AS certificate_id, c.verification_code AS certificate_code, c.revoked_at AS certificate_revoked_at, c.revoke_reason AS certificate_revoke_reason
+     FROM event_registrations r
      JOIN users u ON u.id = r.user_id JOIN events e ON e.id = r.event_id
+     LEFT JOIN certificates c ON c.user_id = r.user_id AND c.event_id = r.event_id
      WHERE e.owner_id = ? ORDER BY u.name`
   ).all(user.id)) as unknown as Reg[];
   return (
@@ -65,7 +70,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
                   {list.length === 0 ? <p className="mt-3 text-sm text-muted">Nenhuma pessoa inscrita ainda.</p> : (
                     <div className="mt-3 overflow-x-auto">
                       <table className="w-full text-left text-sm">
-                        <thead className="text-xs text-muted"><tr><th className="py-1 font-medium">Nome</th><th className="font-medium">Email</th><th className="font-medium">Inscricao</th><th className="font-medium">Check-in</th><th className="font-medium">Check-out</th><th className="font-medium">Chegou bem</th><th className="font-medium">Acoes</th></tr></thead>
+                        <thead className="text-xs text-muted"><tr><th className="py-1 font-medium">Nome</th><th className="font-medium">Email</th><th className="font-medium">Inscricao</th><th className="font-medium">Check-in</th><th className="font-medium">Check-out</th><th className="font-medium">Chegou bem</th><th className="font-medium">Certificado</th><th className="font-medium">Acoes</th></tr></thead>
                         <tbody>
                           {list.map((r) => (
                             <tr key={r.email} className="border-t border-line">
@@ -75,6 +80,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
                               <td className="text-muted">{r.checked_in_at ? "Sim" : "Nao"}</td>
                               <td className="text-muted">{r.checked_out_at ? spShort(r.checked_out_at) : "Nao"}</td>
                               <td className={r.safe_home_at ? "text-emerald-300" : "text-muted"}>{safeHome(e.modality, r)}</td>
+                              <td className="py-1.5">{r.certificate_id && r.certificate_code ? <CertificateRevoke id={r.certificate_id} code={r.certificate_code} revokedAt={r.certificate_revoked_at} reason={r.certificate_revoke_reason} returnTo="/meus-eventos" revoke={revokeCertificate} unrevoke={unrevokeCertificate} /> : <span className="text-muted">—</span>}</td>
                               <td>{r.status === "requested" && e.status !== "cancelled" && (
                                 <form action={reviewEventRegistration} className="flex gap-3">
                                   <input type="hidden" name="registration_id" value={r.id} />

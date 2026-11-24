@@ -5,6 +5,7 @@ import type { CertificateData } from "./certificate-pdf";
 type Row = Omit<CertificateData, "workload_minutes" | "organizer_name" | "responsible_name" | "responsible_signature" | "theme"> & {
   workload_minutes: number | null; organizer_name: string | null; responsible_name: string | null; theme: string | null;
   responsible_signature: string | null; owner_signature: string | null;
+  id: number; user_id: number; owner_id: number | null; revoked_at: string | null; revoked_by: number | null; revoke_reason: string | null;
   ends_at: string | null; event_organizer: string | null; owner_name: string | null; event_theme: string | null;
 };
 
@@ -13,10 +14,15 @@ export function workloadMinutes(startsAt: string, endsAt: string): number | null
   return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
 }
 
+export type LoadedCertificate = CertificateData & {
+  id: number; user_id: number; owner_id: number | null;
+  revoked_at: string | null; revoked_by: number | null; revoke_reason: string | null;
+};
+
 /** Dados do certificado: os gravados na emissao e, nos certificados antigos, os dados atuais do evento. */
-export async function loadCertificate(code: string): Promise<CertificateData | undefined> {
+export async function loadCertificate(code: string): Promise<LoadedCertificate | undefined> {
   const r = (await getDb().prepare(
-    `SELECT c.title, c.verification_code, c.issued_at, c.workload_minutes, c.organizer_name, c.responsible_name, c.theme, c.responsible_signature,
+    `SELECT c.id, c.user_id, e.owner_id, c.revoked_at, c.revoked_by, c.revoke_reason, c.title, c.verification_code, c.issued_at, c.workload_minutes, c.organizer_name, c.responsible_name, c.theme, c.responsible_signature,
             u.name AS recipient_name, e.starts_at, e.ends_at, e.modality, e.city, e.state,
             e.organizer AS event_organizer, owner.name AS owner_name, e.certificate_theme AS event_theme,
             COALESCE(owner.signature_name, owner.name) AS owner_signature
@@ -25,6 +31,8 @@ export async function loadCertificate(code: string): Promise<CertificateData | u
   ).get(code.toUpperCase())) as Row | undefined;
   if (!r) return undefined;
   return {
+    id: r.id, user_id: r.user_id, owner_id: r.owner_id ?? null,
+    revoked_at: r.revoked_at ?? null, revoked_by: r.revoked_by ?? null, revoke_reason: r.revoke_reason ?? null,
     title: r.title, verification_code: r.verification_code, issued_at: r.issued_at, recipient_name: r.recipient_name,
     starts_at: r.starts_at, modality: r.modality ?? null, city: r.city ?? null, state: r.state ?? null,
     workload_minutes: r.workload_minutes ?? (r.starts_at && r.ends_at ? workloadMinutes(r.starts_at, r.ends_at) : null),

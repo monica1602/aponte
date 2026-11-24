@@ -585,6 +585,9 @@ async function ensureMigrations(db: Db) {
     responsible_name: "TEXT",
     theme: "TEXT",
     responsible_signature: "TEXT",
+    revoked_at: "TEXT",
+    revoked_by: "INTEGER",
+    revoke_reason: "TEXT",
   });
   await addColumns(db, "projects", {
     open_contribution: "INTEGER NOT NULL DEFAULT 0",

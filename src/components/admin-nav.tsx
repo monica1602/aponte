@@ -7,6 +7,7 @@ const ITEMS = [
   { href: "/admin/mentores", label: "Mentores" },
   { href: "/admin/empresas", label: "Empresas" },
   { href: "/admin/eventos", label: "Eventos" },
+  { href: "/admin/certificados", label: "Certificados" },
   { href: "/admin/cadastros", label: "Cadastros e convites" },
   { href: "/admin/pedidos", label: "Pedidos LGPD" },
   { href: "/admin/seguranca", label: "Seguranca" },
