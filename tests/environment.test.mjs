@@ -42,3 +42,31 @@ test("previa usa so o banco ponte-preview; sem ele, banco temporario e nunca o r
     }
   }
 });
+
+test("na producao os links usam o endereco fixo, mesmo com cabecalhos forjados", async () => {
+  const { siteUrlFrom, fixedSiteUrl } = await import("../src/lib/environment.ts");
+  const keys = ["BASE_URL", "VERCEL_ENV", "VERCEL_PROJECT_PRODUCTION_URL"];
+  const before = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const forged = { "x-forwarded-host": "evil.example", host: "evil.example", "x-forwarded-proto": "http" };
+  const get = (name) => forged[name];
+  try {
+    for (const k of keys) delete process.env[k];
+    process.env.VERCEL_ENV = "production";
+    process.env.VERCEL_PROJECT_PRODUCTION_URL = "aponte-eight.vercel.app";
+    assert.equal(siteUrlFrom(get), "https://aponte-eight.vercel.app");
+    assert.equal(fixedSiteUrl(), "https://aponte-eight.vercel.app");
+    process.env.BASE_URL = "https://ponte.exemplo/";
+    assert.equal(siteUrlFrom(get), "https://ponte.exemplo");
+    delete process.env.BASE_URL;
+    process.env.VERCEL_ENV = "preview";
+    assert.equal(fixedSiteUrl(), null);
+    assert.equal(siteUrlFrom((name) => ({ host: "aponte-git-x.vercel.app" })[name]), "https://aponte-git-x.vercel.app");
+    delete process.env.VERCEL_ENV;
+    assert.equal(siteUrlFrom(() => undefined), "http://localhost:3000");
+  } finally {
+    for (const k of keys) {
+      if (before[k] === undefined) delete process.env[k];
+      else process.env[k] = before[k];
+    }
+  }
+});

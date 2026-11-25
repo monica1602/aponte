@@ -4,6 +4,7 @@ import { log } from "./log";
 import crypto from "node:crypto";
 import { passwordProblem } from "./password-policy";
 import { headers } from "next/headers";
+import { siteUrlFrom } from "./environment";
 import { getDb, hashPassword } from "./db";
 import { createSession } from "./auth";
 import { back, clientIp, str } from "./session";
@@ -15,11 +16,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 
 async function siteUrl(): Promise<string> {
-  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, "");
   const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
+  return siteUrlFrom((name) => h.get(name));
 }
 
 function resetEmailHtml(name: string, link: string): string {

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { siteUrlFrom } from "./environment";
 import { getSessionUser } from "./auth";
 import type { User } from "./db";
 import { pendingLegalDocs } from "./legal-acceptance";
@@ -15,11 +16,8 @@ export async function clientIp(): Promise<string> {
 }
 
 export async function siteUrl(): Promise<string> {
-  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, "");
   const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
+  return siteUrlFrom((name) => h.get(name));
 }
 
 export const UNVERIFIED_MSG = "Confirme seu e-mail para fazer isso. Use o botao Reenviar e-mail de confirmacao, no topo da pagina.";

@@ -1,17 +1,15 @@
 import { log, errorFields } from "./log";
 import { after } from "next/server";
 import { headers } from "next/headers";
+import { siteUrlFrom } from "./environment";
 import { getDb } from "./db";
 import { MANAGE_EMAILS_PATH, wantsEmail, type EmailKind } from "./email-prefs";
 
 const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 async function siteUrl(): Promise<string> {
-  if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, "");
   const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
+  return siteUrlFrom((name) => h.get(name));
 }
 
 export function inviteEmailHtml(name: string, text: string, button: string, link: string, manageLink = ""): string {

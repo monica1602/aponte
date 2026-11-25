@@ -1,5 +1,7 @@
+import { fixedSiteUrl } from "./environment";
+
 export function baseUrl(): string {
-  return (process.env.BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  return fixedSiteUrl() ?? "http://localhost:3000";
 }
 
 export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";

@@ -1,4 +1,5 @@
 import { errorFields, log } from "./log";
+import { siteUrlFrom } from "./environment";
 
 export type ErrorRequest = { path: string; method: string };
 export type ErrorContext = { routePath?: string; routeType?: string };
@@ -35,11 +36,8 @@ async function claimAlert(key: string, now = Date.now()): Promise<boolean> {
 }
 
 function adminLink(headers: Record<string, string | string[] | undefined> | undefined): string {
-  if (process.env.BASE_URL) return `${process.env.BASE_URL.replace(/\/$/, "")}/admin`;
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
-  const host = one(headers?.["x-forwarded-host"]) ?? one(headers?.host) ?? "localhost:3000";
-  const proto = one(headers?.["x-forwarded-proto"]) ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}/admin`;
+  return `${siteUrlFrom((name) => one(headers?.[name]))}/admin`;
 }
 
 async function defaultSender(text: string, link: string): Promise<unknown> {
