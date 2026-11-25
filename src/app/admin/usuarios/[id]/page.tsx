@@ -4,7 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
 import { EMAIL_STATUS_PT, getPersonDetail, type Ref } from "@/lib/admin-data";
 import { AdminNav } from "@/components/admin-nav";
-import { Badge, Card, ROLE_LABELS } from "@/components/ui";
+import { Badge, Card, Flash, ROLE_LABELS, btnSecondaryCls } from "@/components/ui";
+import { adminConfirmUserEmail } from "@/lib/actions";
 import { externalHref } from "@/lib/url";
 import { ACCEPTANCE_SOURCE_PT, LEGAL_DOC_PT } from "@/lib/legal-acceptance";
 import { CONSENT_PT, CONSENT_SOURCE_PT } from "@/lib/consents";
@@ -53,7 +54,7 @@ function RefList({ title, items, project }: { title: string; items: Ref[]; proje
   );
 }
 
-export default async function AdminUserPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AdminUserPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string; error?: string }> }) {
   if (!(await isAdmin())) redirect("/admin/login");
   const detail = await getPersonDetail(Number((await params).id));
   if (!detail || !detail.row) notFound();
@@ -70,6 +71,7 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
         <Badge kind={role} label={ROLE_LABELS[role]} />
         <Link href={`/pessoas/${row.id}`} className="text-sm text-accent hover:underline">Ver perfil publico</Link>
       </div>
+      <Flash params={await searchParams} />
       <p className="mb-6 text-xs text-amber-200/80">Dados pessoais protegidos pela LGPD. Use apenas para a gestao da plataforma.</p>
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -79,6 +81,13 @@ export default async function AdminUserPage({ params }: { params: Promise<{ id: 
               <div key={k} className="contents"><dt className="text-muted">{label}</dt><dd className="break-words">{k === "role" ? ROLE_LABELS[role] : k === "email_status" ? (EMAIL_STATUS_PT[String(user[k])] ?? show(user[k])) : show(user[k])}</dd></div>
             ))}
           </dl>
+          {user.email_status === "pending" && (
+            <form action={adminConfirmUserEmail} className="mt-4 border-t border-line pt-3">
+              <input type="hidden" name="user_id" value={String(user.id)} />
+              <p className="mb-2 text-xs text-muted">Confirme so se voce reconhece esta pessoa e este e-mail.</p>
+              <button className={btnSecondaryCls}>Confirmar e-mail</button>
+            </form>
+          )}
         </Card>
         <Card>
           <h2 className="mb-3 font-semibold">Perfil detalhado</h2>

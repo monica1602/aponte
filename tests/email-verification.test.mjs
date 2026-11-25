@@ -6,7 +6,7 @@ import path from "node:path";
 
 process.env.DATABASE_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "ponte-ev-")), "test.db");
 const { getDb } = await import("../src/lib/db.ts");
-const { createVerificationToken, markVerificationUsed, verificationTarget, VERIFY_TTL_MS } = await import("../src/lib/email-verification.ts");
+const { adminConfirmEmail, createVerificationToken, markVerificationUsed, verificationTarget, VERIFY_TTL_MS } = await import("../src/lib/email-verification.ts");
 
 async function newUser(email, status = "pending") {
   const r = await getDb()
@@ -42,4 +42,18 @@ test("novo link substitui o anterior e conta confirmada nao aceita link", async 
   assert.ok(await verificationTarget(second));
   await getDb().prepare("UPDATE users SET email_status = 'verified' WHERE id = ?").run(id);
   assert.equal(await verificationTarget(second), null);
+});
+
+test("admin confirma e-mail pendente, o link antigo para de valer e contestado nao muda", async () => {
+  const id = await newUser(`admin${Date.now()}@t.com`);
+  const token = await createVerificationToken(id);
+  assert.equal(await adminConfirmEmail(id), true);
+  const u = await getDb().prepare("SELECT email_status, email_verified_at FROM users WHERE id = ?").get(id);
+  assert.equal(u.email_status, "verified");
+  assert.ok(u.email_verified_at);
+  assert.equal(await verificationTarget(token), null);
+  assert.equal(await adminConfirmEmail(id), false);
+  const disputed = await newUser(`contestado${Date.now()}@t.com`, "disputed");
+  assert.equal(await adminConfirmEmail(disputed), false);
+  assert.equal((await getDb().prepare("SELECT email_status FROM users WHERE id = ?").get(disputed)).email_status, "disputed");
 });

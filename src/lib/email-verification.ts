@@ -38,6 +38,17 @@ export async function markVerificationUsed(token: string): Promise<void> {
   await getDb().prepare("UPDATE email_verifications SET used_at = datetime('now') WHERE token_hash = ?").run(hashToken(token));
 }
 
+/** Admin confirms a pending e-mail by hand. Unused links stop working. False when the e-mail is not pending. */
+export async function adminConfirmEmail(userId: number): Promise<boolean> {
+  const db = getDb();
+  const done = await db
+    .prepare("UPDATE users SET email_status = 'verified', email_verified_at = datetime('now') WHERE id = ? AND email_status = 'pending'")
+    .run(userId);
+  if (!done.changes) return false;
+  await db.prepare("DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL").run(userId);
+  return true;
+}
+
 export function verificationEmailHtml(name: string, roleLabel: string, date: string, yes: string, no: string): string {
   return `<div style="background:#f4f6fb;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;color:#0c1720">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px">

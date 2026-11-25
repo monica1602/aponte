@@ -40,7 +40,7 @@ import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
 } from "./my-data";
 import { MESSAGE_EMAIL_GAP_MIN, MESSAGE_LIMIT, canMessageDirect, conversationBetween, getConversation, messageProblem, otherOf, pair, type ConversationRow } from "./messages";
-import { createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
+import { adminConfirmEmail, createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
 
@@ -1855,6 +1855,15 @@ export async function adminUnsuspendUser(formData: FormData) {
   await audit(null, "user.unsuspended", "user", id);
   await emailUser(id, "Sua conta na Ponte foi reativada", "A administracao desfez a suspensao da sua conta. Voce ja pode entrar de novo.", "Entrar", "/login", "essential");
   back("/admin/denuncias", "msg", "Suspensao desfeita. A pessoa pode entrar de novo.");
+}
+
+export async function adminConfirmUserEmail(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("user_id"));
+  const path = `/admin/usuarios/${id}`;
+  if (!(await adminConfirmEmail(id))) back(path, "error", "Este e-mail nao esta aguardando confirmacao.");
+  await audit(null, "email.verified_by_admin", "user", id);
+  back(path, "msg", "E-mail confirmado. A pessoa ja pode usar todas as funcoes.");
 }
 
 export async function submitReview(formData: FormData) {
