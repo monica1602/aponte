@@ -88,6 +88,8 @@ export interface PlatformEvent {
   state: string;
   organizer: string;
   certificate_theme: string;
+  approval_status: string;
+  approval_note: string;
   created_at: string;
 }
 
@@ -243,6 +245,16 @@ CREATE TABLE IF NOT EXISTS event_registrations (
   checked_in_at TEXT,
   checked_out_at TEXT,
   safe_home_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(event_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS event_invites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','declined')),
+  sent_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(event_id, user_id)
 );
@@ -688,6 +700,8 @@ async function ensureMigrations(db: Db) {
     organizer: "TEXT NOT NULL DEFAULT ''",
     certificate_theme: "TEXT NOT NULL DEFAULT 'classico'",
     review_invited_at: "TEXT",
+    approval_status: "TEXT NOT NULL DEFAULT 'approved'",
+    approval_note: "TEXT NOT NULL DEFAULT ''",
   });
   await addColumns(db, "reports", { sensitive: "INTEGER NOT NULL DEFAULT 0" });
   await addColumns(db, "certificates", {

@@ -40,6 +40,8 @@ import {
   REQUEST_KIND_PT, REQUEST_KINDS, createEmailChange, emailChangeTarget, markEmailChangeUsed, sendPlainEmail, type RequestKind,
 } from "./my-data";
 import { MESSAGE_EMAIL_GAP_MIN, MESSAGE_LIMIT, canMessageDirect, conversationBetween, getConversation, messageProblem, otherOf, pair, type ConversationRow } from "./messages";
+import { MENTEE_EVENT_CATEGORIES } from "./catalog";
+import { PENDING_EVENTS_MAX, REJECT_REASON_MAX, addInvite as addEventInvite, approveEvent, declineInvite, pendingEventCount, rejectEvent } from "./event-invites";
 import { adminConfirmEmail, createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
@@ -87,7 +89,7 @@ async function sendEmailVerification(userId: number, email: string, name: string
 }
 
 function isEventOwner(user: User): boolean {
-  return user.role === "mentor" || user.role === "company";
+  return user.role === "mentor" || user.role === "company" || user.role === "mentee";
 }
 
 function validDateTime(value: string): boolean {
@@ -749,6 +751,11 @@ export async function createEvent(formData: FormData) {
   const user = await me();
   if (!isEventOwner(user)) back("/dashboard", "error", "Apenas mentores e empresas podem criar eventos.");
   requireVerified(user, "/dashboard");
+  const mentee = user.role === "mentee";
+  if (mentee && !MENTEE_EVENT_CATEGORIES.includes(str(formData, "category"))) back("/dashboard", "error", "Escolha a categoria do evento.");
+  if (mentee && (await pendingEventCount(user.id)) >= PENDING_EVENTS_MAX) {
+    back("/dashboard", "error", `Voce ja tem ${PENDING_EVENTS_MAX} eventos aguardando aprovacao. Espere a resposta da administracao para enviar outro.`);
+  }
 
   const title = str(formData, "title");
   const modality = str(formData, "modality");
@@ -780,22 +787,27 @@ export async function createEvent(formData: FormData) {
 
   const result = await getDb()
     .prepare(
-      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer, certificate_theme)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer, certificate_theme, status, approval_status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       user.id, title, str(formData, "description"), modality, startsAt, endsAt,
       onlineUrl, location, capacity, formData.get("require_approval") === "on" ? 1 : 0,
       str(formData, "category"), str(formData, "city"), str(formData, "state").toUpperCase().slice(0, 2),
-      str(formData, "organizer") || user.name, validCertificateTheme(str(formData, "certificate_theme"))
+      str(formData, "organizer") || user.name, validCertificateTheme(str(formData, "certificate_theme")),
+      mentee ? "draft" : "published", mentee ? "pending" : "approved"
     );
   const eventId = Number(result.lastInsertRowid);
   await audit(user.id, "event.created", "event", eventId);
+  if (mentee) {
+    await alertAdmin(`Evento aguardando aprovacao: "${title}" por ${user.name} (${ROLE_PT[user.role] ?? user.role}). Aprove ou recuse em Admin > Eventos.`);
+    back(`/eventos/${eventId}`, "msg", "Evento enviado para a aprovacao da administracao. Ja pode convidar pessoas: os convites saem quando ele for aprovado.");
+  }
   back("/dashboard", "msg", "Evento publicado e pronto para receber inscricoes.");
 }
 
 type EditableEvent = {
-  id: number; title: string; owner_id: number; status: string; modality: string; starts_at: string; ends_at: string;
+  id: number; title: string; owner_id: number; status: string; approval_status: string; modality: string; starts_at: string; ends_at: string;
   online_url: string; location: string; city: string; state: string;
 };
 
@@ -805,10 +817,12 @@ export async function updateEvent(formData: FormData) {
   const ret = `/meus-eventos/${Number.isInteger(id) && id > 0 ? id : 0}/editar`;
   const db = getDb();
   const event = (await db.prepare(
-    "SELECT id, title, owner_id, status, modality, starts_at, ends_at, online_url, location, city, state FROM events WHERE id = ? AND owner_id = ?"
+    "SELECT id, title, owner_id, status, approval_status, modality, starts_at, ends_at, online_url, location, city, state FROM events WHERE id = ? AND owner_id = ?"
   ).get(id, user.id)) as EditableEvent | undefined;
   if (!event) back("/meus-eventos", "error", "Evento nao encontrado ou voce nao e quem o cadastrou.");
   if (event.status === "cancelled") back("/meus-eventos", "error", "Evento cancelado nao pode ser editado.");
+  if (event.approval_status === "rejected") back("/meus-eventos", "error", "Evento recusado pela administracao nao pode ser editado.");
+  if (user.role === "mentee" && !MENTEE_EVENT_CATEGORIES.includes(str(formData, "category"))) back(ret, "error", "Escolha a categoria do evento.");
   if (eventEnded(event.ends_at)) back("/meus-eventos", "error", "O evento ja terminou e nao pode mais ser editado.");
 
   const title = str(formData, "title");
@@ -899,6 +913,61 @@ export async function deleteEvent(formData: FormData) {
   await audit(user.id, "event.delete", "event", id);
   await alertAdmin(`Evento excluido: "${event!.title}" por ${user.name} (${ROLE_PT[user.role] ?? user.role})`);
   back("/meus-eventos", "msg", `Evento "${event!.title}" excluido.`);
+}
+
+export async function inviteToEvent(formData: FormData) {
+  const user = await me();
+  const eventId = Number(formData.get("event_id"));
+  const ret = `/eventos/${Number.isInteger(eventId) && eventId > 0 ? eventId : 0}`;
+  if (user.role !== "mentee") back(ret, "error", "Convites sao feitos pelos mentorados que organizam o evento.");
+  requireVerified(user, ret);
+  const event = (await getDb().prepare("SELECT id, title, owner_id, status, approval_status, ends_at FROM events WHERE id = ? AND owner_id = ?")
+    .get(eventId, user.id)) as { id: number; title: string; owner_id: number; status: string; approval_status: string; ends_at: string } | undefined;
+  if (!event) back("/meus-eventos", "error", "Evento nao encontrado ou voce nao e quem o cadastrou.");
+  if (event.status === "cancelled" || event.approval_status === "rejected" || eventEnded(event.ends_at)) back(ret, "error", "Este evento nao aceita mais convites.");
+  const published = event.status === "published";
+  const outcome = await addEventInvite(event, user.name, Number(formData.get("user_id")), published);
+  const errors: Record<string, string> = {
+    self: "Voce organiza este evento.",
+    not_found: "Pessoa nao encontrada.",
+    blocked: "Nao e possivel convidar esta pessoa.",
+    full: "Este evento ja tem 50 convites, o maximo.",
+    duplicate: "Esta pessoa ja foi convidada.",
+  };
+  if (outcome !== "ok") back(ret, "error", errors[outcome]);
+  await audit(user.id, "event.invited", "event", eventId);
+  back(ret, "msg", published ? "Convite enviado." : "Convite guardado. Ele sai quando a administracao aprovar o evento.");
+}
+
+export async function declineEventInvite(formData: FormData) {
+  const user = await me();
+  const eventId = Number(formData.get("event_id"));
+  const ret = `/eventos/${Number.isInteger(eventId) && eventId > 0 ? eventId : 0}`;
+  if (!(await declineInvite(eventId, user.id))) back(ret, "error", "Convite nao encontrado.");
+  const event = (await getDb().prepare("SELECT title, owner_id FROM events WHERE id = ?").get(eventId)) as { title: string; owner_id: number } | undefined;
+  if (event) await notify(event.owner_id, `${user.name} recusou o convite para o evento "${event.title}".`, ret);
+  await audit(user.id, "event.invite_declined", "event", eventId);
+  back(ret, "msg", "Convite recusado.");
+}
+
+export async function adminApproveEvent(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("event_id"));
+  const done = await approveEvent(id);
+  if (!done) back("/admin/eventos", "error", "Este evento nao esta aguardando aprovacao.");
+  await audit(null, "event.approved_by_admin", "event", id);
+  back("/admin/eventos", "msg", `Evento "${done.event.title}" aprovado.${done.invites ? ` ${done.invites} convite(s) enviado(s).` : ""}`);
+}
+
+export async function adminRejectEvent(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("event_id"));
+  const reason = str(formData, "reason").slice(0, REJECT_REASON_MAX);
+  if (!reason) back("/admin/eventos", "error", "Escreva o motivo da recusa. A pessoa vai receber esse texto.");
+  const event = await rejectEvent(id, reason);
+  if (!event) back("/admin/eventos", "error", "Este evento nao esta aguardando aprovacao.");
+  await audit(null, "event.rejected_by_admin", "event", id);
+  back("/admin/eventos", "msg", `Evento "${event.title}" recusado. A pessoa foi avisada.`);
 }
 
 export async function requestEventAccess(formData: FormData) {

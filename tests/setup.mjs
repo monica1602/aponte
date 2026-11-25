@@ -9,6 +9,7 @@ const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../src")
 registerHooks({
   resolve(specifier, context, next) {
     let spec = specifier;
+    if (spec === "next/server" || spec === "next/headers") spec += ".js";
     if (spec.startsWith("@/")) spec = pathToFileURL(path.join(src, spec.slice(2))).href;
     if ((spec.startsWith(".") || spec.startsWith("file:")) && !path.extname(spec)) {
       const base = spec.startsWith("file:") ? fileURLToPath(spec) : fileURLToPath(new URL(spec, context.parentURL));

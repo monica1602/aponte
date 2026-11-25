@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
 import { getDb, type PlatformEvent } from "@/lib/db";
 import { updateEvent } from "@/lib/actions";
-import { EVENT_CATEGORIES } from "@/lib/catalog";
+import { EVENT_CATEGORIES, MENTEE_EVENT_CATEGORIES } from "@/lib/catalog";
 import { eventEnded } from "@/lib/event-time";
 import { Card, Flash, PageHeader, btnSecondaryCls, inputCls } from "@/components/ui";
 
@@ -24,7 +24,9 @@ export default async function EditarEventoPage({ params, searchParams }: {
   if (!e) redirect("/meus-eventos?error=" + encodeURIComponent("Evento nao encontrado ou voce nao e quem o cadastrou."));
   if (e.status === "cancelled") redirect("/meus-eventos?error=" + encodeURIComponent("Evento cancelado nao pode ser editado."));
   if (eventEnded(e.ends_at)) redirect("/meus-eventos?error=" + encodeURIComponent("O evento ja terminou e nao pode mais ser editado."));
-  const categories = e.category && !EVENT_CATEGORIES.includes(e.category) ? [e.category, ...EVENT_CATEGORIES] : EVENT_CATEGORIES;
+  if (e.approval_status === "rejected") redirect("/meus-eventos?error=" + encodeURIComponent("Evento recusado pela administracao nao pode ser editado."));
+  const base = user.role === "mentee" ? MENTEE_EVENT_CATEGORIES : EVENT_CATEGORIES;
+  const categories = e.category && !base.includes(e.category) ? [e.category, ...base] : base;
   return (
     <div className="pb-10">
       <PageHeader eyebrow="Meus eventos" title="Editar evento">

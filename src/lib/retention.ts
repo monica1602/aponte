@@ -43,6 +43,9 @@ export async function runRetention(now = Date.now()) {
   const registrations = await db.prepare(
     "DELETE FROM event_registrations WHERE event_id IN (SELECT id FROM events WHERE substr(ends_at, 1, 16) < ?)"
   ).run(eventCutoff(RETENTION_DAYS.registrations, now));
+  await db.prepare(
+    "DELETE FROM event_invites WHERE event_id IN (SELECT id FROM events WHERE substr(ends_at, 1, 16) < ?)"
+  ).run(eventCutoff(RETENTION_DAYS.registrations, now));
   const safeHome = await db.prepare(
     `UPDATE event_registrations SET safe_home_at = NULL, safe_home_reminded_at = COALESCE(safe_home_reminded_at, datetime('now'))
      WHERE safe_home_at IS NOT NULL AND event_id IN (SELECT id FROM events WHERE substr(ends_at, 1, 16) < ?)`

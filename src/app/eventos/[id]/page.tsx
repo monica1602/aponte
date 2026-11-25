@@ -14,6 +14,8 @@ import { DeleteConfirm } from "@/components/delete-confirm";
 import { CancelEvent } from "@/components/cancel-event";
 import { Badge, Card, Flash, btnCls, btnSecondaryCls } from "@/components/ui";
 import { eventEnded } from "@/lib/event-time";
+import { EventInvites, InviteNotice } from "@/components/event-invites";
+import { myInvite } from "@/lib/event-invites";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Evento — Ponte" };
@@ -25,7 +27,7 @@ export default async function EventoPage({
   params, searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ msg?: string; error?: string }>;
+  searchParams: Promise<{ msg?: string; error?: string; q?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -33,13 +35,15 @@ export default async function EventoPage({
   const db = getDb();
   const e = await db
     .prepare(
-      `SELECT e.*, u.name AS owner_name,
+      `SELECT e.*, u.name AS owner_name, u.role AS owner_role,
         (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved,
         (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id) + (SELECT COUNT(*) FROM certificates c WHERE c.event_id = e.id) AS history
-       FROM events e JOIN users u ON u.id = e.owner_id WHERE e.id = ? AND e.status IN ('published','cancelled')`
+       FROM events e JOIN users u ON u.id = e.owner_id WHERE e.id = ? AND e.status IN ('published','cancelled','draft')`
     )
-    .get(Number(id)) as (PlatformEvent & { owner_name: string; approved: number; history: number }) | undefined;
-  if (!e) notFound();
+    .get(Number(id)) as (PlatformEvent & { owner_name: string; owner_role: string; approved: number; history: number }) | undefined;
+  if (!e || (e.status === "draft" && user?.id !== e.owner_id)) notFound();
+  const draft = e.status === "draft";
+  const rejected = e.approval_status === "rejected";
   const reg = user
     ? (await db.prepare("SELECT status, checked_in_at, communication_consent, image_consent FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string; checked_in_at: string | null; communication_consent: number; image_consent: number } | undefined)
     : undefined;
@@ -58,6 +62,8 @@ export default async function EventoPage({
   const canReview = user ? !!(await eventReviewTarget(user.id, e.id)) : false;
   const reviewed = canReview && user ? !!(await myReview(user.id, "event", e.id)) : false;
   const summary = user?.id === e.owner_id ? await eventSummary(e.id) : null;
+  const invite = user && !isOrganizer && !draft ? await myInvite(e.id, user.id) : null;
+  const canInvite = isOrganizer && e.owner_role === "mentee" && !cancelledEvent && !rejected && !eventEnded(e.ends_at);
   return (
     <div className="mx-auto max-w-3xl py-10">
       <Link href="/eventos" className="text-sm text-muted hover:text-fg">← Eventos</Link>
@@ -68,6 +74,8 @@ export default async function EventoPage({
       </div>
       <h1 className="mt-3 text-3xl font-bold tracking-tight">{e.title}</h1>
       {cancelledEvent && <p className="mt-3 rounded-md border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300">Este evento foi cancelado pela organizacao.</p>}
+      {draft && !rejected && <p className="mt-3 rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-sm text-amber-200">Este evento aguarda a aprovacao da administracao. So voce ve esta pagina. Os convites saem quando ele for aprovado.</p>}
+      {rejected && <p className="mt-3 rounded-md border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300 [overflow-wrap:anywhere]">A administracao recusou este evento. Motivo: {e.approval_note}</p>}
       <p className="mt-2 text-sm text-muted">Organizado por {e.organizer || e.owner_name}</p>
       {user && user.id !== e.owner_id && <div className="mt-2"><ReportForm type="event" id={e.id} ret={`/eventos/${e.id}`} label="Denunciar evento" /></div>}
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -80,7 +88,8 @@ export default async function EventoPage({
         <Card><dt className="text-xs text-muted">Inscricao</dt><dd className="mt-1 text-sm">{e.require_approval ? "Sujeita a aprovacao do organizador" : "Confirmacao automatica"}</dd></Card>
       </dl>
       {e.description && <p className="mt-6 whitespace-pre-line leading-relaxed text-fg/85">{e.description}</p>}
-      {user?.id === e.owner_id && !cancelledEvent && !eventEnded(e.ends_at) && <Link href={`/meus-eventos/${e.id}/editar`} className={`${btnSecondaryCls} mt-8`}>Editar evento</Link>}
+      {canInvite && <EventInvites eventId={e.id} ownerId={e.owner_id} q={sp.q ?? ""} />}
+      {user?.id === e.owner_id && !cancelledEvent && !rejected && !eventEnded(e.ends_at) && <Link href={`/meus-eventos/${e.id}/editar`} className={`${btnSecondaryCls} mt-8`}>Editar evento</Link>}
       {user?.id === e.owner_id && !cancelledEvent && Number(e.history) > 0 && <CancelEvent eventId={e.id} returnTo={ret} className="mt-8" />}
       {user?.id === e.owner_id && !cancelledEvent && Number(e.history) === 0 && (
         <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: ret }} label="Excluir evento" className="mt-8">
@@ -124,6 +133,7 @@ export default async function EventoPage({
         </Card>
       )}
       <div className="mt-8">
+        {invite?.status === "pending" && !registration && !cancelledEvent && <InviteNotice eventId={e.id} inviter={invite.inviter} />}
         {!user ? (
           <Link href="/login" className={btnCls}>Entre para se inscrever</Link>
         ) : e.owner_id === user.id ? (

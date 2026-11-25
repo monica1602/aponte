@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { requestEventAccess } from "@/lib/actions";
 import { Badge, Card, Empty, Flash, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
-import { EVENT_CATEGORIES } from "@/lib/catalog";
+import { ALL_EVENT_CATEGORIES } from "@/lib/catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +42,7 @@ export default async function EventosPage({
      WHERE e.status = 'published' ORDER BY e.starts_at ASC`
   ).all() as unknown as EventRow[];
   const fModality = sp.modality && sp.modality in modalityLabel ? sp.modality : "";
-  const fCategory = EVENT_CATEGORIES.includes(sp.category ?? "") ? sp.category! : "";
+  const fCategory = ALL_EVENT_CATEGORIES.includes(sp.category ?? "") ? sp.category! : "";
   const fCity = (sp.city ?? "").trim();
   const cities = [...new Set(allEvents.map((e) => e.city).filter(Boolean))].sort();
   const events = allEvents.filter(
@@ -67,7 +67,7 @@ export default async function EventosPage({
           <select name="modality" defaultValue={fModality} className={inputCls}><option value="">Todas</option>{Object.entries(modalityLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         </label>
         <label className="space-y-1 text-sm"><span>Categoria</span>
-          <select name="category" defaultValue={fCategory} className={inputCls}><option value="">Todas</option>{EVENT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+          <select name="category" defaultValue={fCategory} className={inputCls}><option value="">Todas</option>{ALL_EVENT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
         </label>
         <label className="space-y-1 text-sm"><span>Cidade</span>
           <select name="city" defaultValue={fCity} className={inputCls}><option value="">Todas</option>{cities.map((c) => <option key={c}>{c}</option>)}</select>

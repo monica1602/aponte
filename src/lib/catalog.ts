@@ -87,6 +87,13 @@ export const EVENT_CATEGORIES = [
   "Mentoria em grupo", "Apresentacao de projetos", "Evento open source", "Feira de tecnologia", "Outros",
 ];
 
+/** Mentorados criam eventos so nestas categorias; o evento passa pela aprovacao do admin. */
+export const MENTEE_EVENT_CATEGORIES = [
+  "Apresentacao de projetos", "Grupo de estudo", "Roda de conversa", "Estudo em dupla", "Revisao de projeto", "Outros",
+];
+
+export const ALL_EVENT_CATEGORIES = [...EVENT_CATEGORIES, ...MENTEE_EVENT_CATEGORIES.filter((c) => !EVENT_CATEGORIES.includes(c))];
+
 export const UFS = [
   "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO",
 ];

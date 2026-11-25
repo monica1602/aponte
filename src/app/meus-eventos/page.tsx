@@ -14,7 +14,7 @@ import { eventEnded } from "@/lib/event-time";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Meus eventos — Ponte" };
 
-type Ev = { id: number; title: string; starts_at: string; ends_at: string; modality: string; capacity: number | null; status: string; certificates: number };
+type Ev = { id: number; title: string; starts_at: string; ends_at: string; modality: string; capacity: number | null; status: string; approval_status: string; certificates: number };
 type Reg = { id: number; event_id: number; name: string; email: string; role: string; status: string; checked_in_at: string | null; checked_out_at: string | null; safe_home_at: string | null;
   certificate_id: number | null; certificate_code: string | null; certificate_revoked_at: string | null; certificate_revoke_reason: string | null };
 
@@ -35,7 +35,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
   const user = await getSessionUser();
   if (!user) redirect("/login");
   const db = getDb();
-  const events = (await db.prepare("SELECT e.id, e.title, e.starts_at, e.ends_at, e.modality, e.capacity, e.status, (SELECT COUNT(*) FROM certificates c WHERE c.event_id = e.id) AS certificates FROM events e WHERE e.owner_id = ? ORDER BY e.starts_at DESC").all(user.id)) as unknown as Ev[];
+  const events = (await db.prepare("SELECT e.id, e.title, e.starts_at, e.ends_at, e.modality, e.capacity, e.status, e.approval_status, (SELECT COUNT(*) FROM certificates c WHERE c.event_id = e.id) AS certificates FROM events e WHERE e.owner_id = ? ORDER BY e.starts_at DESC").all(user.id)) as unknown as Ev[];
   const regs = (await db.prepare(
     `SELECT r.id, r.event_id, u.name, u.email, u.role, r.status, r.checked_in_at, r.checked_out_at, r.safe_home_at,
        c.id AS certificate_id, c.verification_code AS certificate_code, c.revoked_at AS certificate_revoked_at, c.revoke_reason AS certificate_revoke_reason
@@ -51,9 +51,9 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
       </PageHeader>
       <Flash params={sp} />
       {user.role !== "mentee" && <Link href="/dashboard" className={`${btnSecondaryCls} mb-6`}>Cadastrar evento no painel</Link>}
-      {user.role === "mentee" ? (
-        <ParticipantEvents userId={user.id} returnTo="/meus-eventos" />
-      ) : events.length === 0 ? <Empty>Voce ainda nao cadastrou eventos.</Empty> : (
+      {user.role === "mentee" && <ParticipantEvents userId={user.id} returnTo="/meus-eventos" />}
+      {user.role === "mentee" && events.length > 0 && <h2 className="mb-3 mt-8 text-lg font-semibold">Eventos que voce organiza</h2>}
+      {user.role === "mentee" && events.length === 0 ? null : events.length === 0 ? <Empty>Voce ainda nao cadastrou eventos.</Empty> : (
         <ul className="space-y-4">
           {events.map((e) => {
             const list = regs.filter((r) => r.event_id === e.id);
@@ -64,6 +64,8 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
                     <span className="flex items-center gap-2">
                       <Link href={`/eventos/${e.id}`} className="text-lg font-semibold text-accent hover:underline">{e.title}</Link>
                       {e.status === "cancelled" && <Badge kind="cancelled" label="Cancelado" />}
+                      {e.approval_status === "pending" && <Badge kind="pending" label="Aguardando aprovacao" />}
+                      {e.approval_status === "rejected" && <Badge kind="cancelled" label="Recusado" />}
                     </span>
                     <span className="text-xs text-muted">{new Date(e.starts_at).toLocaleString("pt-BR", { dateStyle: "medium", timeStyle: "short" })} · {list.length} inscritos{e.capacity ? ` / ${e.capacity} vagas` : ""} · {list.filter((r) => r.status === "approved" && r.checked_in_at).length} de {list.filter((r) => r.status === "approved").length} confirmados fizeram check-in</span>
                   </div>
@@ -95,7 +97,7 @@ export default async function MeusEventosPage({ searchParams }: { searchParams: 
                       </table>
                     </div>
                   )}
-                  {e.status !== "cancelled" && !eventEnded(e.ends_at) && <Link href={`/meus-eventos/${e.id}/editar`} className={`${btnSecondaryCls} mt-4`}>Editar evento</Link>}
+                  {e.status !== "cancelled" && e.approval_status !== "rejected" && !eventEnded(e.ends_at) && <Link href={`/meus-eventos/${e.id}/editar`} className={`${btnSecondaryCls} mt-4`}>Editar evento</Link>}
                   {e.status !== "cancelled" && (list.length > 0 || Number(e.certificates) > 0) && <CancelEvent eventId={e.id} returnTo="/meus-eventos" className="mt-4" />}
                   {e.status !== "cancelled" && list.length === 0 && Number(e.certificates) === 0 && (
                     <DeleteConfirm action={deleteEvent} fields={{ event_id: e.id, return: "/meus-eventos" }} label="Excluir evento" className="mt-4">

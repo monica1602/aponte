@@ -5,7 +5,7 @@ import { ImpactGrid } from "@/components/impact";
 import { getProfile } from "@/lib/db";
 import { eventReviewOpen, mentorSummary } from "@/lib/reviews";
 import { PASSWORD_HINT } from "@/lib/password-policy";
-import { EVENT_CATEGORIES } from "@/lib/catalog";
+import { EVENT_CATEGORIES, MENTEE_EVENT_CATEGORIES } from "@/lib/catalog";
 import { CERTIFICATE_THEMES, DEFAULT_CERTIFICATE_THEME } from "@/lib/certificate-themes";
 import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
@@ -89,7 +89,7 @@ type AvailabilityRow = { id: number; weekday: number; start_time: string; end_ti
 type EventRow = {
   id: number; title: string; modality: string; starts_at: string; ends_at: string;
   location: string; online_url: string; capacity: number | null; require_approval: number;
-  approved: number; requested: number; checkins: number; status: string;
+  approved: number; requested: number; checkins: number; status: string; approval_status: string;
 };
 type RegistrationRow = {
   id: number; event_id: number; title: string; modality: string; starts_at: string; ends_at: string;
@@ -107,11 +107,12 @@ function safeHomeTime(at: string): string {
 
 const WEEKDAYS = ["Domingo", "Segunda", "Terca", "Quarta", "Quinta", "Sexta", "Sabado"];
 
-function EventCreator() {
+function EventCreator({ mentee = false }: { mentee?: boolean }) {
   return (
     <Card>
       <h2 className="font-semibold">Criar evento</h2>
       <p className="mt-1 text-xs text-muted">Online, presencial ou hibrido. Participantes devem aceitar o aviso de privacidade para se inscrever.</p>
+      {mentee && <p className="mt-1 text-xs text-muted">O evento passa pela aprovacao da administracao antes de aparecer em Eventos. Depois de enviar, voce pode convidar pessoas cadastradas.</p>}
       <form action={createEvent} className="mt-3 space-y-3">
         <input name="title" required placeholder="Nome do evento" className={inputCls} />
         <textarea name="description" rows={2} placeholder="Descricao e orientacoes" className={inputCls} />
@@ -128,9 +129,9 @@ function EventCreator() {
         <input name="online_url" type="text" inputMode="url" placeholder="Link do encontro online (ex.: meet.google.com/abc-defg-hij)" className={inputCls} />
         <input name="location" placeholder="Endereco / local presencial" className={inputCls} />
         <div className="grid gap-3 sm:grid-cols-3">
-          <select name="category" aria-label="Categoria" className={inputCls} defaultValue="">
+          <select name="category" aria-label="Categoria" className={inputCls} defaultValue="" required={mentee}>
             <option value="">Categoria</option>
-            {EVENT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+            {(mentee ? MENTEE_EVENT_CATEGORIES : EVENT_CATEGORIES).map((c) => <option key={c}>{c}</option>)}
           </select>
           <input name="city" placeholder="Cidade" aria-label="Cidade" className={inputCls} />
           <input name="state" placeholder="UF" aria-label="Estado (UF)" maxLength={2} className={inputCls} />
@@ -139,7 +140,7 @@ function EventCreator() {
           {CERTIFICATE_THEMES.map((t) => <option key={t.id} value={t.id}>Certificado: {t.label}</option>)}
         </select>
         <label className="flex items-center gap-2 text-xs text-muted"><input name="require_approval" type="checkbox" /> Aprovar inscricoes manualmente</label>
-        <button className={btnSecondaryCls}>Publicar evento</button>
+        <button className={btnSecondaryCls}>{mentee ? "Enviar para aprovacao" : "Publicar evento"}</button>
       </form>
     </Card>
   );
@@ -182,7 +183,7 @@ function MyEvents({ events, registrations, owner }: { events: EventRow[]; regist
         <ul className="mt-3 space-y-3">{owner ? events.map((event) => {
           const participants = registrations.filter((r) => r.event_id === event.id);
           return <li key={event.id} className="rounded-xl border border-line p-3">
-            <p className="font-medium"><Badge kind={event.modality} label={event.modality === "in_person" ? "Presencial" : event.modality === "hybrid" ? "Hibrido" : "Online"} /> {event.title}{event.status === "cancelled" && <> <Badge kind="cancelled" label="Cancelado" /></>}</p>
+            <p className="font-medium"><Badge kind={event.modality} label={event.modality === "in_person" ? "Presencial" : event.modality === "hybrid" ? "Hibrido" : "Online"} /> <Link href={`/eventos/${event.id}`} className="hover:text-accent">{event.title}</Link>{event.status === "cancelled" && <> <Badge kind="cancelled" label="Cancelado" /></>}{event.approval_status === "pending" && <> <Badge kind="pending" label="Aguardando aprovacao" /></>}{event.approval_status === "rejected" && <> <Badge kind="cancelled" label="Recusado" /></>}</p>
             <p className="mt-1 text-xs text-muted">{new Date(event.starts_at).toLocaleString("pt-BR")} · {event.approved} confirmado(s){event.capacity ? ` / ${event.capacity}` : ""} · {event.requested} aguardando</p>
             <p className="mt-1 text-xs text-cyan-300">{event.checkins} de {event.approved} confirmado(s) fizeram check-in</p>
             {participants.length > 0 && <ul className="mt-3 space-y-2 border-t border-line pt-2">{participants.map((r) => <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-xs"><span>{r.participant_name} · <Badge kind={r.status} label={r.status === "requested" ? "aguardando" : r.status === "approved" ? "confirmado" : "lista de espera"} />{r.safe_home_at && <span className="ml-1 text-emerald-300">· ✓ chegou bem {safeHomeTime(r.safe_home_at)}</span>}</span>{event.status !== "cancelled" && <div className="flex gap-2">
@@ -376,7 +377,7 @@ export default async function DashboardPage({
     .all(user.id) as unknown as OppRow[];
 
   const isMentorSide = user.role === "mentor" || user.role === "company";
-  const myEvents = isMentorSide
+  const myEvents = isMentorSide || user.role === "mentee"
     ? (await db.prepare(
         `SELECT e.*,
           (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved,
@@ -394,7 +395,7 @@ export default async function DashboardPage({
      FROM event_registrations r JOIN events e ON e.id = r.event_id JOIN users u ON u.id = r.user_id
      WHERE r.user_id = ? AND r.status IN ('requested','approved','waitlist') ORDER BY e.starts_at DESC`
   ).all(user.id)) as unknown as RegistrationRow[];
-  const eventRegistrations = isMentorSide
+  const eventRegistrations = isMentorSide || myEvents.length > 0
     ? (await db.prepare(
         `SELECT r.*, e.title, e.modality, e.starts_at, e.ends_at, e.status AS event_status, u.id AS participant_id, u.name AS participant_name,
        (SELECT c.verification_code FROM certificates c WHERE c.user_id = r.user_id AND c.event_id = r.event_id) AS certificate_code,
@@ -541,7 +542,9 @@ export default async function DashboardPage({
         <div className="space-y-6">
           {user.role === "mentee" ? (
             <>
-              <MyEvents events={myEvents} registrations={eventRegistrations} owner={false} />
+              <MyEvents events={[]} registrations={myRegistrations} owner={false} />
+              <EventCreator mentee />
+              {myEvents.length > 0 && <MyEvents events={myEvents} registrations={eventRegistrations} owner />}
               <Card>
                 <h2 className="font-semibold">Minhas contribuicoes</h2>
               <p className="mt-1 text-xs text-muted">

@@ -188,7 +188,7 @@ export async function getEventAttendance(): Promise<EventAttendance[]> {
     `SELECT e.id, e.title, e.modality, e.starts_at, e.ends_at, u.name AS organizer,
        (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved,
        (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved' AND r.checked_in_at IS NOT NULL) AS checkins
-     FROM events e JOIN users u ON u.id = e.owner_id ORDER BY e.starts_at DESC`
+     FROM events e JOIN users u ON u.id = e.owner_id WHERE e.status <> 'draft' ORDER BY e.starts_at DESC`
   ).all()) as unknown as EventAttendance[];
   const now = Date.now();
   return rows.map((r) => ({

@@ -45,6 +45,7 @@ export const MY_DATA_SECTIONS = {
   aceites_dos_documentos: "Aceites dos documentos",
   consentimentos: "Consentimentos",
   inscricoes_em_eventos: "Inscricoes e presenca em eventos",
+  convites_para_eventos: "Convites para eventos",
   certificados: "Certificados",
   historico_dos_certificados: "Linha do tempo dos certificados",
   eventos_organizados: "Eventos organizados",
@@ -103,6 +104,10 @@ export async function collectMyData(userId: number): Promise<MyData | null> {
       `SELECT e.title AS evento, e.starts_at, e.ends_at, r.status, r.lgpd_accepted_at, r.communication_consent, r.image_consent,
               r.checked_in_at, r.checked_out_at, r.safe_home_at, r.created_at
        FROM event_registrations r JOIN events e ON e.id = r.event_id WHERE r.user_id = ? ORDER BY e.starts_at DESC`
+    ),
+    convites_para_eventos: await all(
+      `SELECT e.title AS evento, e.starts_at, i.status, i.sent_at, i.created_at
+       FROM event_invites i JOIN events e ON e.id = i.event_id WHERE i.user_id = ? AND i.sent_at IS NOT NULL ORDER BY i.created_at DESC`
     ),
     certificados: await all("SELECT title, verification_code, issued_at, workload_minutes, organizer_name, responsible_name, theme, responsible_signature, revoked_at, revoke_reason FROM certificates WHERE user_id = ? ORDER BY issued_at DESC"),
     historico_dos_certificados: ((await db.prepare(
