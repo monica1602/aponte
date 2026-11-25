@@ -255,15 +255,18 @@ pede aos buscadores para nao indexar as paginas (`src/lib/environment.ts`, pela 
 da Vercel). Na previa, entre com as contas de demo abaixo: sem `RESEND_API_KEY`, os links de
 confirmacao de e-mail nao sao enviados.
 
+Na previa, o site usa so `STORAGE_DATABASE_URL` (o banco `ponte-preview`) e ignora o `DATABASE_URL`
+do banco real (`postgresUrl()` em `src/lib/sql.ts`). Se `STORAGE_DATABASE_URL` faltar, a previa usa um
+banco temporario e mostra o aviso amarelo, sem nunca cair no banco real.
+
 Configuracao na Vercel (projeto `aponte`):
 
-1. **Storage → Create Database → Neon**, com o nome `ponte-preview`. Ao conectar ao projeto,
-   marque so o ambiente **Preview**.
-2. No banco de producao (**Storage →** banco atual), deixe a conexao com o projeto so em **Production**.
-3. Em **Settings → Environment Variables**, deixe so em **Production**: `RESEND_API_KEY`, `EMAIL_FROM`,
+1. **Storage → Create Database → Neon**, com o nome `ponte-preview`, conectado ao projeto com o
+   prefixo padrao `STORAGE` (cria `STORAGE_DATABASE_URL`).
+2. Em **Settings → Environment Variables**, deixe so em **Production**: `RESEND_API_KEY`, `EMAIL_FROM`,
    `ADMIN_ALERT_EMAIL`, `ADMIN_WHATSAPP`, `CALLMEBOT_API_KEY`, `BASE_URL`, `GOOGLE_CLIENT_ID`,
    `GOOGLE_CLIENT_SECRET` e `CRON_SECRET`. `ADMIN_EMAIL` e `ADMIN_PASSWORD` podem valer tambem em Preview.
-4. Em **Deployments**, faca **Redeploy** da previa mais recente para ela usar o banco novo.
+3. Em **Deployments**, faca **Redeploy** da previa mais recente para ela usar o banco novo.
 
 ### Contas de demo (senha: `Ponte@2026`)
 

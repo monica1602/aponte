@@ -18,6 +18,6 @@ O site público é **https://aponte-eight.vercel.app**: projeto `aponte` na Verc
 - **Disponibilidade e backup:** `.github/workflows/disponibilidade.yml` e `.github/workflows/backup.yml`.
 - **Local em modo produção:** `npm run build && npm start` serve `.next/standalone/server.js` em `localhost:3000`. `next start` NÃO funciona com `output: "standalone"`.
 
-- **Ambientes:** desenvolvimento (computador/CI, SQLite ou PostgreSQL vazio), prévia (branch ≠ `main`, banco Neon `ponte-preview` só com dados de demo, sem e-mail/WhatsApp, faixa "Ambiente de teste" por `VERCEL_ENV=preview`) e produção (`main`, banco real). Tabela e passo a passo no README, em "Ambientes".
+- **Ambientes:** desenvolvimento (computador/CI, SQLite ou PostgreSQL vazio), prévia (branch ≠ `main`, banco Neon `ponte-preview` via `STORAGE_DATABASE_URL` (nunca o `DATABASE_URL` real; ver `postgresUrl()` em `src/lib/sql.ts`) só com dados de demo, sem e-mail/WhatsApp, faixa "Ambiente de teste" por `VERCEL_ENV=preview`) e produção (`main`, banco real). Tabela e passo a passo no README, em "Ambientes".
 
 Alternativa fora da Vercel: Dockerfile pronto (multi-stage, `output: "standalone"`, volume em `/app/data` via `DATABASE_PATH`) para Railway/Render/Fly.io/VPS.

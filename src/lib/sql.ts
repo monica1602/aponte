@@ -1,6 +1,7 @@
 // Small async SQL layer: SQLite (node:sqlite) locally, PostgreSQL when DATABASE_URL is set.
 // Queries are written once with `?` placeholders and SQLite-style datetime('now').
 import { log } from "./log";
+import { isPreview } from "./environment";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
@@ -121,7 +122,9 @@ function postgresDriver(url: string): Driver {
 }
 
 // Vercel's Neon/Postgres integrations may expose the connection string under different names.
+// Previews only use the ponte-preview database (STORAGE_DATABASE_URL), never the production one.
 export function postgresUrl(): string | undefined {
+  if (isPreview()) return process.env.STORAGE_DATABASE_URL || undefined;
   return process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL || undefined;
 }
 
