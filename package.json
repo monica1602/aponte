@@ -17,7 +17,7 @@
     "@signpdf/placeholder-pdf-lib": "^3.4.0",
     "@signpdf/signer-p12": "^3.4.0",
     "@signpdf/signpdf": "^3.4.0",
-    "next": "16.3.5",
+    "next": "16.4.6",
     "pdf-lib": "^1.17.1",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4",
@@ -33,7 +33,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.5",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   },
