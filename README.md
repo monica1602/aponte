@@ -418,7 +418,7 @@ Todos os comandos devem concluir sem erros. Em seguida, confirme que
 
 ## Backup e restauracao do banco
 
-O workflow `.github/workflows/backup.yml` faz uma copia do banco PostgreSQL do site todo dia as 03:00 (Brasilia).
+O workflow `.github/workflows/backup.yml` faz uma copia do banco PostgreSQL do site todo dia as 03:17 (Brasilia) e a cada envio para a `main`, porque o GitHub descarta muitos horarios agendados.
 
 - **Copia:** `pg_dump` completo (inclui os arquivos enviados, que ficam no banco) e a contagem de registros de cada tabela, tirados do mesmo instante. A copia so le o banco.
 - **Criptografia:** AES-256 com `gpg`, usando a senha do segredo `BACKUP_PASSPHRASE`. O repositorio e publico, entao a copia nunca e guardada sem criptografia.

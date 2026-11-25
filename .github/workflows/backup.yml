@@ -1,11 +1,13 @@
 name: Backup do banco
 
-# Copia diaria do banco do site (Neon), criptografada, guardada por 30 dias.
+# Copia diaria do banco do site (Neon) e a cada envio para a main, criptografada, guardada por 30 dias.
 # As segundas-feiras (e nas execucoes manuais), a copia e restaurada num banco vazio para conferir a recuperacao.
 # Horarios em UTC. Em forks, o GitHub desliga as tarefas por horario por padrao: ative-as na aba Actions.
 on:
   schedule:
-    - cron: "0 6 * * *" # todo dia as 03:00 de Brasilia
+    - cron: "17 6 * * *" # todo dia as 03:17 de Brasilia (fora do inicio da hora, quando o GitHub mais descarta horarios)
+  push:
+    branches: [main] # tambem a cada envio para a main, porque o GitHub descarta muitos horarios
   workflow_dispatch:
     inputs:
       testar_recuperacao:
