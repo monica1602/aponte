@@ -205,6 +205,11 @@ para Preview e Production.
 
 ### Publicar na Vercel (com PostgreSQL/Neon)
 
+Este e o deploy oficial da Ponte: **https://aponte-eight.vercel.app**, projeto `aponte` na Vercel,
+com o banco no Neon. Todo push para a `main` do repositorio `monica1602/aponte` publica em producao;
+push para outros branches gera so uma previa (preview), sem mudar o site. Os logs ficam em
+**Vercel → projeto `aponte` → Logs**.
+
 Na Vercel o banco precisa ser PostgreSQL: o disco das funcoes serverless e temporario. Sem
 `DATABASE_URL`, o app usa SQLite em `/tmp` apenas como demonstracao (os dados se perdem).
 
@@ -434,7 +439,9 @@ Atualize `BACKUP_PASSPHRASE`. As copias anteriores continuam abrindo so com a se
 - **Saude:** `GET /api/saude` responde `{"status":"ok","banco":"ok"}` (200) quando o site e o banco funcionam e `{"status":"erro","banco":"erro"}` (503) quando o banco nao responde em 8 s. Nao mostra dados.
 - **Disponibilidade:** o workflow `.github/workflows/disponibilidade.yml` abre `/api/saude` a cada 15 minutos. Se falhar 2 vezes seguidas, com 1 minuto entre elas, abre a issue "Site fora do ar" atribuida a dona do repositorio, e o GitHub manda e-mail. Quando o site volta, a issue e comentada e fechada sozinha. Requer **Issues** ligadas em Settings → General → Features. Para checar outro endereco, troque `SITE_URL` no workflow. O GitHub pode atrasar execucoes agendadas em alguns minutos.
 
-## Deploy (Docker — Railway, Render, Fly.io, VPS)
+## Deploy alternativo (Docker — Railway, Render, Fly.io, VPS)
+
+O deploy oficial e na Vercel (veja "Publicar na Vercel"). O Docker fica como alternativa para rodar fora dela.
 
 ```bash
 docker build -t ponte .

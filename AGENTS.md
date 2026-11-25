@@ -8,14 +8,14 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# Deploy atual (temporário)
+# Deploy oficial
 
-O site público não está em Railway/Render — é um **túnel Cloudflare efêmero** apontando para o dev server local:
+O site público é **https://aponte-eight.vercel.app**: projeto `aponte` na Vercel, com o banco PostgreSQL no Neon.
 
-- `npm run build && npm start` serve produção em `localhost:3000` via `.next/standalone/server.js` (log em `/tmp/next-prod.log`). `next start` NÃO funciona com `output: "standalone"`.
-- `cloudflared tunnel --url http://localhost:3000` expõe na URL pública (log em `/tmp/cloudflared.log`)
-- **Sem URL ativa no momento** — o último túnel morreu (queda de rede expira o túnel efêmero no edge, sem re-registro).
-- **Morre quando a máquina desliga, dorme ou perde rede.** A cada execução o trycloudflare gera URL nova — não dá para reutilizar.
-- Para recriar: `npm start` + `cloudflared tunnel --url http://localhost:3000`, pegar a URL nova no log e atualizar `apresentacao/slides.md` (2 menções).
+- **Publicar:** todo push para a `main` do fork `monica1602/aponte` publica em produção. Push para outros branches gera só uma prévia (preview), sem mudar o site.
+- **Variáveis** (`DATABASE_URL`, `ADMIN_*`, `RESEND_API_KEY` etc.): Vercel → projeto `aponte` → Settings → Environment Variables. Passo a passo no README, em "Publicar na Vercel".
+- **Logs:** Vercel → projeto `aponte` → Logs. As mensagens saem em 1 linha JSON (`src/lib/log.ts`).
+- **Disponibilidade e backup:** `.github/workflows/disponibilidade.yml` e `.github/workflows/backup.yml`.
+- **Local em modo produção:** `npm run build && npm start` serve `.next/standalone/server.js` em `localhost:3000`. `next start` NÃO funciona com `output: "standalone"`.
 
-Deploy permanente: Dockerfile pronto (multi-stage, `output: "standalone"`, volume em `/app/data` via `DATABASE_PATH`) — basta conta no Railway/Render/Fly.io.
+Alternativa fora da Vercel: Dockerfile pronto (multi-stage, `output: "standalone"`, volume em `/app/data` via `DATABASE_PATH`) para Railway/Render/Fly.io/VPS.
