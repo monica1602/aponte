@@ -2,6 +2,7 @@ name: Backup do banco
 
 # Copia diaria do banco do site (Neon), criptografada, guardada por 30 dias.
 # As segundas-feiras (e nas execucoes manuais), a copia e restaurada num banco vazio para conferir a recuperacao.
+# Horarios em UTC. Em forks, o GitHub desliga as tarefas por horario por padrao: ative-as na aba Actions.
 on:
   schedule:
     - cron: "0 6 * * *" # todo dia as 03:00 de Brasilia

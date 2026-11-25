@@ -2,6 +2,7 @@ name: Disponibilidade do site
 
 # A cada 15 minutos abre /api/saude. Se falhar 2 vezes seguidas (1 minuto entre elas), abre um aviso (issue)
 # atribuido a dona do repositorio; quando o site volta, comenta e fecha o aviso sozinho.
+# Horarios em UTC. Em forks, o GitHub desliga as tarefas por horario por padrao: ative-as na aba Actions.
 on:
   schedule:
     - cron: "7,22,37,52 * * * *"
