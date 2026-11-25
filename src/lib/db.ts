@@ -978,7 +978,7 @@ const DEMO_EMAILS = ["ana@ponte.dev", "carlos@ponte.dev", "rita@ponte.dev", "con
 
 // Contas de demo criadas com a senha antiga ("senha123") passam para a senha que atende a politica atual.
 async function upgradeDemoPasswords(db: Db) {
-  if (process.env.SEED_DEMO === "0") return;
+  if (process.env.SEED_DEMO === "0" || process.env.VERCEL_ENV === "production") return;
   for (const email of DEMO_EMAILS) {
     const row = (await db.prepare("SELECT id, password_hash FROM users WHERE email = ?").get(email)) as { id: number; password_hash: string } | undefined;
     if (row && verifyPassword("senha123", row.password_hash)) {
@@ -988,7 +988,7 @@ async function upgradeDemoPasswords(db: Db) {
 }
 
 async function seedIfEmpty(db: Db) {
-  if (process.env.SEED_DEMO === "0") return;
+  if (process.env.SEED_DEMO === "0" || process.env.VERCEL_ENV === "production") return;
   const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM users").get()) as { n: number };
   if (n > 0) return;
 
@@ -1123,7 +1123,7 @@ async function seedIfEmpty(db: Db) {
 }
 
 async function seedEducation(db: Db) {
-  if (process.env.SEED_DEMO === "0") return;
+  if (process.env.SEED_DEMO === "0" || process.env.VERCEL_ENV === "production") return;
   const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM profiles").get()) as { n: number };
   if (n > 0) return;
   const idOf = async (email: string) =>

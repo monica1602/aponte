@@ -20,6 +20,6 @@ O site público é **https://aponte-eight.vercel.app**: projeto `aponte` na Verc
 
 - **Ambientes:** desenvolvimento (computador/CI, SQLite ou PostgreSQL vazio), prévia (branch ≠ `main`, banco Neon `ponte-preview` via `STORAGE_DATABASE_URL` (nunca o `DATABASE_URL` real; ver `postgresUrl()` em `src/lib/sql.ts`) só com dados de demo, sem e-mail/WhatsApp, faixa "Ambiente de teste" por `VERCEL_ENV=preview`) e produção (`main`, banco real). Tabela e passo a passo no README, em "Ambientes".
 
-- **Dados de demonstração:** só no computador, nos testes e nas prévias. Produção usa `SEED_DEMO=0`; as 7 contas de demo foram removidas com `scripts/remover-demo.mjs`.
+- **Dados de demonstração:** só no computador, nos testes e nas prévias. Produção (`VERCEL_ENV=production`) nunca cria demo, mesmo sem `SEED_DEMO=0` (guardas em `src/lib/db.ts`); as 7 contas de demo foram removidas com `scripts/remover-demo.mjs`.
 
 Alternativa fora da Vercel: Dockerfile pronto (multi-stage, `output: "standalone"`, volume em `/app/data` via `DATABASE_PATH`) para Railway/Render/Fly.io/VPS.
