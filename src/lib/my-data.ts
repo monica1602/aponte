@@ -1,3 +1,4 @@
+import { mailConfigured, sendMail } from "./mail";
 import { log, errorFields } from "./log";
 import crypto from "node:crypto";
 import { getDb } from "./db";
@@ -262,11 +263,10 @@ export async function pendingEmailChange(userId: number, now = Date.now()): Prom
 
 const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-/** Envia pelo Resend. Sem RESEND_API_KEY, registra no log e devolve false. */
+/** Envia pelo Brevo ou Resend. Sem servico de e-mail configurado, registra no log e devolve false. */
 export async function sendPlainEmail(to: string, subject: string, paragraphs: string[], button?: { label: string; link: string }): Promise<boolean> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    log("warn", "meus-dados", `RESEND_API_KEY ausente; e-mail para ${to}: ${subject}${button ? ` ${button.link}` : ""}`);
+  if (!mailConfigured()) {
+    log("warn", "meus-dados", `Envio de e-mail nao configurado; e-mail para ${to}: ${subject}${button ? ` ${button.link}` : ""}`);
     return false;
   }
   const html = `<div style="background:#f4f6fb;padding:32px 16px;font-family:Arial,Helvetica,sans-serif;color:#0c1720">
@@ -282,19 +282,13 @@ export async function sendPlainEmail(to: string, subject: string, paragraphs: st
   </table>
 </div>`;
   try {
-    const res = await fetch(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM ?? "Ponte <onboarding@resend.dev>",
-        to: [to],
-        subject: `Ponte: ${subject}`.slice(0, 150),
-        html,
-        text: [...paragraphs, button ? `${button.label}: ${button.link}` : ""].filter(Boolean).join("\n\n"),
-      }),
-      signal: AbortSignal.timeout(10_000),
+    const res = await sendMail({
+      to,
+      subject: `Ponte: ${subject}`.slice(0, 150),
+      html,
+      text: [...paragraphs, button ? `${button.label}: ${button.link}` : ""].filter(Boolean).join("\n\n"),
     });
-    if (!res.ok) log("warn", "meus-dados", `Resend respondeu ${res.status}`);
+    if (!res.ok) log("warn", "meus-dados", `${res.provider} respondeu ${res.status}`);
     return res.ok;
   } catch (e) {
     log("warn", "meus-dados", "Falha ao enviar.", errorFields(e));

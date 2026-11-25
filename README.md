@@ -222,6 +222,8 @@ Na Vercel o banco precisa ser PostgreSQL: o disco das funcoes serverless e tempo
 4. Para o "Esqueci minha senha" enviar e-mails, crie uma conta gratuita no Resend e cadastre
    `RESEND_API_KEY` (e, com dominio verificado, `EMAIL_FROM`, ex.: `Ponte <nao-responda@seudominio.com>`).
    Sem a chave, o link de redefinicao aparece apenas no log do servidor.
+   Com `BREVO_API_KEY` (chave de API do Brevo, `xkeysib-...`), todos os e-mails saem pelo Brevo, com o
+   remetente de `BREVO_SENDER` em `src/lib/mail.ts`; sem ela, continuam pelo Resend.
    Para avisar o administrador no WhatsApp (novos cadastros, mentorias, convites, candidaturas,
    projetos e atualizacoes de perfil), cadastre `ADMIN_WHATSAPP` (numero com DDI, ex.: `5511999999999`)
    e `CALLMEBOT_API_KEY` (chave gratuita do CallMeBot). As mensagens levam so nomes, sem e-mails.

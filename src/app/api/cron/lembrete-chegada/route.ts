@@ -1,3 +1,4 @@
+import { mailConfigured } from "@/lib/mail";
 import { getDb, notify } from "@/lib/db";
 import { emailUser } from "@/lib/user-email";
 import { runRetention } from "@/lib/retention";
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
   }
   const retention = await runRetention();
   const reviewInvites = await inviteEventReviews();
-  if (!process.env.RESEND_API_KEY) return Response.json({ sent: 0, skipped: "RESEND_API_KEY ausente", retention, reviewInvites });
+  if (!mailConfigured()) return Response.json({ sent: 0, skipped: "envio de e-mail nao configurado", retention, reviewInvites });
 
   const db = getDb();
   const rows = (await db.prepare(

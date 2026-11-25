@@ -1,3 +1,4 @@
+import { mailConfigured, sendMail } from "./mail";
 import { log, errorFields } from "./log";
 import { after } from "next/server";
 import { headers } from "next/headers";
@@ -28,11 +29,10 @@ export function inviteEmailHtml(name: string, text: string, button: string, link
 </div>`;
 }
 
-/** Envia um e-mail de aviso ao usuario (via Resend) sem atrasar a resposta. Sem RESEND_API_KEY, nao faz nada. */
+/** Envia um e-mail de aviso ao usuario (Brevo ou Resend) sem atrasar a resposta. Sem servico de e-mail configurado, nao faz nada. */
 export async function emailUser(userId: number, subject: string, text: string, button: string, path: string, kind: EmailKind): Promise<void> {
   if (!(await wantsEmail(userId, kind))) return;
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return;
+  if (!mailConfigured()) return;
   const u = (await getDb().prepare("SELECT name, email FROM users WHERE id = ?").get(userId)) as { name: string; email: string } | undefined;
   if (!u?.email) return;
   const base = await siteUrl();
@@ -40,19 +40,13 @@ export async function emailUser(userId: number, subject: string, text: string, b
   const manage = kind === "essential" ? "" : `${base}${MANAGE_EMAILS_PATH}`;
   after(async () => {
     try {
-      const res = await fetch(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: process.env.EMAIL_FROM ?? "Ponte <onboarding@resend.dev>",
-          to: [u.email],
+      const res = await sendMail({
+          to: u.email,
           subject: `Ponte: ${subject}`.slice(0, 150),
           html: inviteEmailHtml(u.name, text, button, link, manage),
           text: `Ola, ${u.name}!\n\n${text}\n\n${button}: ${link}${manage ? `\n\nGerenciar e-mails: ${manage}` : ""}`,
-        }),
-        signal: AbortSignal.timeout(10_000),
       });
-      if (!res.ok) log("warn", "email-usuario", `Resend respondeu ${res.status}`);
+      if (!res.ok) log("warn", "email-usuario", `${res.provider} respondeu ${res.status}`);
     } catch (e) {
       log("warn", "email-usuario", "Falha ao enviar.", errorFields(e));
     }

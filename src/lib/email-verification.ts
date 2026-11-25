@@ -1,3 +1,4 @@
+import { mailConfigured, sendMail } from "./mail";
 import { log, errorFields } from "./log";
 import crypto from "node:crypto";
 import { getDb } from "./db";
@@ -72,26 +73,19 @@ export async function sendVerificationEmail(
 ): Promise<boolean> {
   const yes = `${base}/verificar-email?token=${token}`;
   const no = `${yes}&r=nao`;
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    log("warn", "verificar-email", `RESEND_API_KEY ausente; link para ${to}: ${yes}`);
+  if (!mailConfigured()) {
+    log("warn", "verificar-email", `Envio de e-mail nao configurado; link para ${to}: ${yes}`);
     return false;
   }
   const safeName = name.replace(/[<>&"]/g, "");
   try {
-    const res = await fetch(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: process.env.EMAIL_FROM ?? "Ponte <onboarding@resend.dev>",
-        to: [to],
+    const res = await sendMail({
+        to,
         subject: "Ponte: foi voce que criou esta conta?",
         html: verificationEmailHtml(safeName, roleLabel, date, yes, no),
         text: `Ola, ${safeName}!\n\nUma conta de ${roleLabel} foi criada na Ponte com este e-mail em ${date}.\n\nFoi voce? Confirme seu e-mail neste link (vale por 24 horas e so pode ser usado uma vez):\n${yes}\n\nNao foi voce? Desative a conta neste link:\n${no}`,
-      }),
-      signal: AbortSignal.timeout(10_000),
     });
-    if (!res.ok) log("error", "verificar-email", `Resend respondeu ${res.status}: ${await res.text()}`);
+    if (!res.ok) log("error", "verificar-email", `${res.provider} respondeu ${res.status}: ${await res.detail()}`);
     return res.ok;
   } catch (e) {
     log("warn", "verificar-email", "Falha ao enviar.", errorFields(e));
