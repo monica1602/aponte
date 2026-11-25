@@ -94,6 +94,7 @@ export async function login(page: Page, email: string, password = DEMO_PASSWORD)
 
 export async function signup(page: Page, data: { name: string; email: string; password: string; role?: "Sou Mentorado" | "Sou Mentor" | "Sou Empresa" }) {
   await page.goto("/signup");
+  const opened = Date.now();
   await page.locator("label").filter({ hasText: new RegExp(`^${data.role ?? "Sou Mentorado"}$`) }).click();
   await page.locator("input[name=name]").fill(data.name);
   await page.locator("input[name=email]").fill(data.email);
@@ -103,6 +104,7 @@ export async function signup(page: Page, data: { name: string; email: string; pa
   await page.locator("input[name=employment_terms]").check();
   await page.locator("input[name=code_of_conduct]").check();
   await page.locator("input[name=public_profile_consent]").check();
+  await page.waitForTimeout(Math.max(0, 3500 - (Date.now() - opened)));
   await page.getByRole("button", { name: "Criar minha conta" }).click();
   await page.waitForLoadState("networkidle");
 }

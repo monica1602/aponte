@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PASSWORD_HINT } from "@/lib/password-policy";
 import { registerAccount } from "@/lib/actions";
+import { SIGNUP_STARTED_FIELD, SIGNUP_TRAP_FIELD, signupStartedAt } from "@/lib/signup-guard";
 import { Card, Flash, btnCls, inputCls } from "@/components/ui";
 import { TermsAccept } from "@/components/terms-accept";
 import { TermsText } from "@/components/terms-text";
@@ -24,6 +25,13 @@ export default async function SignupPage({
           depois, complete seu perfil para receber recomendacoes por compatibilidade.
         </p>
         <form action={registerAccount} className="space-y-3">
+          <input type="hidden" name={SIGNUP_STARTED_FIELD} value={signupStartedAt()} />
+          <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+            <label>
+              Deixe este campo em branco
+              <input name={SIGNUP_TRAP_FIELD} type="text" tabIndex={-1} autoComplete="off" defaultValue="" />
+            </label>
+          </div>
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Como voce quer participar?</legend>
             <div className="grid grid-cols-3 gap-2">
