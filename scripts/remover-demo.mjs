@@ -1,6 +1,7 @@
 // Remove do banco as 7 contas de demonstracao e o que pertence a elas (usado no site real, com SEED_DEMO=0).
 //   node scripts/remover-demo.mjs levantamento  -> so le o banco e mostra o que seria removido
 //   node scripts/remover-demo.mjs remover       -> remove numa transacao unica; recusa se houver ligacao com pessoas reais
+//     PERMITIR_LIGACOES="event_registrations=1,consent_events=1" aceita so as ligacoes aprovadas, com as contagens exatas
 // Banco: DATABASE_URL (PostgreSQL) ou DATABASE_PATH (SQLite). So imprime nomes de tabelas e contagens.
 import pg from "pg";
 import { DatabaseSync } from "node:sqlite";
@@ -133,13 +134,21 @@ export async function survey(db) {
   return { found: demoIds.length, removed, nulled, links, counts, plan: Object.fromEntries([...del].map(([t, s]) => [t, [...s]])) };
 }
 
-/** Remove numa transacao. Se houver ligacao com pessoas reais, ou se algo diferente do previsto mudar, desfaz tudo. */
-export async function remove(db) {
+export function parseAllowed(text = "") {
+  return Object.fromEntries(text.split(",").map((p) => p.trim()).filter(Boolean).map((p) => { const [t, n] = p.split("="); return [t.trim(), Number(n)]; }));
+}
+
+const sameLinks = (a, b) => Object.keys({ ...a, ...b }).every((t) => (a[t] ?? 0) === (b[t] ?? 0));
+
+/** Remove numa transacao. Se as ligacoes com pessoas reais nao forem exatamente as aprovadas, ou se algo diferente do previsto mudar, desfaz tudo. */
+export async function remove(db, allowed = {}) {
   await db.begin(false);
   try {
     const s = await survey(db);
-    const totalLinks = Object.values(s.links).reduce((a, b) => a + b, 0);
-    if (totalLinks) throw new Error(`Encontrei ${totalLinks} ligacao(oes) com pessoas reais. Nada foi removido.`);
+    if (!sameLinks(s.links, allowed)) {
+      const total = Object.values(s.links).reduce((a, b) => a + b, 0);
+      throw new Error(`Encontrei ${total} ligacao(oes) com pessoas reais, diferente das aprovadas. Nada foi removido.`);
+    }
     for (const [t, list] of Object.entries(s.plan)) {
       if (t === "users" || !list.length) continue;
       await db.run(`DELETE FROM ${ident(t)} WHERE id IN (${marks(list)})`, list);
@@ -159,12 +168,12 @@ export async function remove(db) {
   }
 }
 
-function print(s, title) {
+function print(s, title, verb) {
   console.log(title);
   console.log(`Contas de demonstracao encontradas: ${s.found} de ${DEMO_EMAILS.length}`);
-  console.log("Registros removidos por tabela:");
+  console.log(`Registros ${verb} por tabela:`);
   for (const [t, n] of Object.entries(s.removed)) console.log(`  ${t}: ${n}`);
-  console.log("Campos que ficam vazios em registros que continuam:");
+  console.log(`Campos que ${verb === "removidos" ? "ficaram" : "ficariam"} vazios em registros que continuam:`);
   for (const [c, n] of Object.entries(s.nulled)) console.log(`  ${c}: ${n}`);
   if (!Object.keys(s.nulled).length) console.log("  nenhum");
   console.log("Ligacoes com pessoas reais:");
@@ -185,9 +194,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         await db.begin(true);
         const s = await survey(db);
         await db.rollback();
-        print(s, "LEVANTAMENTO (nada foi alterado)");
+        print(s, "LEVANTAMENTO (nada foi alterado)", "que seriam removidos");
       } else {
-        print(await remove(db), "REMOCAO CONCLUIDA");
+        print(await remove(db, parseAllowed(process.env.PERMITIR_LIGACOES)), "REMOCAO CONCLUIDA", "removidos");
       }
     } finally {
       await db.close();

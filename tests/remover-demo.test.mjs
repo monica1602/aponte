@@ -63,10 +63,12 @@ test("so remove as contas de demonstracao; para se houver ligacao com pessoa rea
   assert.equal(before.removed.conversations, 1);
 
   await assert.rejects(run((c) => demo.remove(c)), /ligacao/);
-  assert.equal((await q("SELECT COUNT(*) AS n FROM users").get()).n, 9);
+  await assert.rejects(run((c) => demo.remove(c, demo.parseAllowed("mentorships=2"))), /ligacao/);
+  await assert.rejects(run((c) => demo.remove(c, demo.parseAllowed("mentorships=1,event_registrations=1"))), /ligacao/);
+  assert.equal(Number((await q("SELECT COUNT(*) AS n FROM users").get()).n), 9);
+  assert.equal(Number((await q("SELECT COUNT(*) AS n FROM profiles").get()).n), 7);
 
-  await q("DELETE FROM mentorships WHERE mentee_id = ?").run(real2);
-  const done = await run((c) => demo.remove(c));
+  const done = await run((c) => demo.remove(c, demo.parseAllowed("mentorships=1")));
   assert.equal(done.found, 7);
 
   const emails = (await q("SELECT email FROM users ORDER BY email").all()).map((r) => r.email);
