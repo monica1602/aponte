@@ -248,7 +248,7 @@ cookies `httpOnly`, e acoes operacionais relevantes entram no log de auditoria.
 |---|---|---|---|---|
 | Desenvolvimento | Computador, CI e testes (`npm run dev`, `npm test`, `npm run test:e2e`) | SQLite local ou PostgreSQL vazio, com dados de demonstracao | Quem roda | Nao (sem chaves; os testes usam um simulador local) |
 | Previa (preview) | Vercel, a cada push para um branch que nao e a `main` | 2o banco do Neon (`ponte-preview`), so com dados de demonstracao | So quem tem login no projeto da Vercel | Nao (as chaves ficam so em Production) |
-| Producao | Vercel, a cada push para a `main`: https://aponte-eight.vercel.app | Banco do Neon de producao, com os dados reais | Publico | Sim |
+| Producao | Vercel, a cada push para a `main`: https://aponte-eight.vercel.app | Banco do Neon de producao, com os dados reais e sem contas de demonstracao (`SEED_DEMO=0`) | Publico | Sim |
 
 Na previa, o site mostra no topo a faixa "Ambiente de teste (previa): os dados nao sao reais" e
 pede aos buscadores para nao indexar as paginas (`src/lib/environment.ts`, pela variavel `VERCEL_ENV`
@@ -269,6 +269,10 @@ Configuracao na Vercel (projeto `aponte`):
 3. Em **Deployments**, faca **Redeploy** da previa mais recente para ela usar o banco novo.
 
 ### Contas de demo (senha: `Ponte@2026`)
+
+Existem so no computador, nos testes e nas previas. O site real usa `SEED_DEMO=0` e nao tem essas contas:
+elas foram removidas com `scripts/remover-demo.mjs` (`levantamento` so le o banco; `remover` apaga numa
+transacao unica e recusa se houver ligacao com pessoas reais).
 
 | Papel      | Email              |
 | ---------- | ------------------ |
