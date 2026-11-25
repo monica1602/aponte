@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth";
 import { logout, resendEmailVerification } from "@/lib/actions";
 import { getDb, getProfile, profileCompleteness } from "@/lib/db";
 import { isTemporaryDatabase } from "@/lib/sql";
+import { isPreview } from "@/lib/environment";
 import { unreadMessageCount } from "@/lib/messages";
 import { Suspense } from "react";
 import { MobileMenuCloser } from "@/components/mobile-menu-closer";
@@ -17,6 +18,7 @@ export const metadata: Metadata = {
   title: "Ponte — mentoria entre geracoes de profissionais",
   description:
     "Comunidade que conecta profissionais experientes a pessoas em inicio de carreira ou transicao, em qualquer idade.",
+  ...(isPreview() && { robots: { index: false, follow: false } }),
 };
 
 const NAV = [
@@ -80,6 +82,11 @@ export default async function RootLayout({
   return (
     <html lang="pt-BR" className={geist.variable}>
       <body className="min-h-screen bg-ink font-sans text-fg antialiased">
+        {isPreview() && (
+          <p role="status" className="bg-amber-400/15 px-5 py-2 text-center text-xs font-semibold text-amber-200">
+            Ambiente de teste (previa): os dados nao sao reais.
+          </p>
+        )}
         {isTemporaryDatabase() && (
           <p role="status" className="bg-amber-400/15 px-5 py-2 text-center text-xs text-amber-200">
             Modo demonstracao: o banco de dados nao esta conectado, os dados sao temporarios e o login pode cair.

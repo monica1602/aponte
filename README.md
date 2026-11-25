@@ -242,6 +242,29 @@ As acoes de cadastro, eventos, presenca e certificados validam usuario, papel
 e propriedade no servidor. Senhas sao protegidas com `scrypt`, sessoes usam
 cookies `httpOnly`, e acoes operacionais relevantes entram no log de auditoria.
 
+### Ambientes: desenvolvimento, previa e producao
+
+| Ambiente | Onde | Banco | Quem acessa | Envia e-mail e WhatsApp |
+|---|---|---|---|---|
+| Desenvolvimento | Computador, CI e testes (`npm run dev`, `npm test`, `npm run test:e2e`) | SQLite local ou PostgreSQL vazio, com dados de demonstracao | Quem roda | Nao (sem chaves; os testes usam um simulador local) |
+| Previa (preview) | Vercel, a cada push para um branch que nao e a `main` | 2o banco do Neon (`ponte-preview`), so com dados de demonstracao | So quem tem login no projeto da Vercel | Nao (as chaves ficam so em Production) |
+| Producao | Vercel, a cada push para a `main`: https://aponte-eight.vercel.app | Banco do Neon de producao, com os dados reais | Publico | Sim |
+
+Na previa, o site mostra no topo a faixa "Ambiente de teste (previa): os dados nao sao reais" e
+pede aos buscadores para nao indexar as paginas (`src/lib/environment.ts`, pela variavel `VERCEL_ENV`
+da Vercel). Na previa, entre com as contas de demo abaixo: sem `RESEND_API_KEY`, os links de
+confirmacao de e-mail nao sao enviados.
+
+Configuracao na Vercel (projeto `aponte`):
+
+1. **Storage → Create Database → Neon**, com o nome `ponte-preview`. Ao conectar ao projeto,
+   marque so o ambiente **Preview**.
+2. No banco de producao (**Storage →** banco atual), deixe a conexao com o projeto so em **Production**.
+3. Em **Settings → Environment Variables**, deixe so em **Production**: `RESEND_API_KEY`, `EMAIL_FROM`,
+   `ADMIN_ALERT_EMAIL`, `ADMIN_WHATSAPP`, `CALLMEBOT_API_KEY`, `BASE_URL`, `GOOGLE_CLIENT_ID`,
+   `GOOGLE_CLIENT_SECRET` e `CRON_SECRET`. `ADMIN_EMAIL` e `ADMIN_PASSWORD` podem valer tambem em Preview.
+4. Em **Deployments**, faca **Redeploy** da previa mais recente para ela usar o banco novo.
+
 ### Contas de demo (senha: `Ponte@2026`)
 
 | Papel      | Email              |
