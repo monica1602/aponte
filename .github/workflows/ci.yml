@@ -34,7 +34,7 @@ jobs:
       - name: Testes no SQLite
         run: npm test
       - name: Testes no PostgreSQL
-        run: npm test
+        run: node --import ./tests/setup.mjs --test --test-concurrency=1 tests/*.test.mjs
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/ponte_ci
       - name: Build
