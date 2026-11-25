@@ -26,6 +26,7 @@ test("redefinicao de senha: link por e-mail, senha nova vale, antiga e link usad
   await context.clearCookies();
   await login(page, email, oldPassword);
   await expect(page.getByText("Email ou senha incorretos.")).toBeVisible();
+  await page.waitForTimeout(2500);
   await login(page, email, newPassword);
   await expect(page).toHaveURL(/\/(dashboard|perfil)/);
 
@@ -33,4 +34,17 @@ test("redefinicao de senha: link por e-mail, senha nova vale, antiga e link usad
   await page.goto(link);
   await expect(page.getByText("Este link e invalido, expirou ou ja foi usado.")).toBeVisible();
   await expect(page.locator("input[name=password]")).toHaveCount(0);
+});
+
+test("login: depois de errar a senha, a nova tentativa espera alguns segundos", async ({ page }) => {
+  const email = `${unique("espera")}@e2e.test`;
+  await signup(page, { name: "Caio Espera", email, password: "Espera@2026" });
+  await page.context().clearCookies();
+  await login(page, email, "Errada@2026");
+  await expect(page.getByText("Email ou senha incorretos.")).toBeVisible();
+  await login(page, email, "Espera@2026");
+  await expect(page.getByText(/Aguarde \d segundos? e tente de novo/)).toBeVisible();
+  await page.waitForTimeout(2500);
+  await login(page, email, "Espera@2026");
+  await expect(page).toHaveURL(/\/(dashboard|perfil)/);
 });

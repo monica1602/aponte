@@ -22,8 +22,9 @@ import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
 import { checkInWindow, checkOutOpen, eventEnded, eventStarted, spTime } from "./event-time";
+import { claimOwnerWarning, clearLoginAttempts, loginLimits, progressiveWait, waitSecondsMessage } from "./login-guard";
 import { looksLikeBot, signupAlertText, SIGNUP_SITE_LIMIT } from "./signup-guard";
-import { blockedFor, clearAttempts, recordAttempt, tooManyMessage } from "./rate-limit";
+import { blockedFor, recordAttempt, tooManyMessage } from "./rate-limit";
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
 import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
@@ -217,19 +218,21 @@ export async function login(formData: FormData) {
   const email = str(formData, "email").toLowerCase();
   const password = str(formData, "password");
   const ip = await clientIp();
-  const emailLimit = { action: "login", subject: `email:${email}`, max: 5, windowMin: 15 };
-  const wait = await blockedFor([emailLimit, { action: "login", subject: `ip:${ip}`, max: 30, windowMin: 15 }]);
+  const limits = loginLimits(email, ip);
+  const wait = await blockedFor([limits.pair, limits.email, limits.ip]);
   if (wait) back(loginPage, "error", tooManyMessage(wait));
+  const seconds = await progressiveWait(limits.pair);
+  if (seconds) back(loginPage, "error", waitSecondsMessage(seconds));
   const user = await getDb().prepare("SELECT * FROM users WHERE email = ?").get(email) as
     | User
     | undefined;
   if (!user || !verifyPassword(password, user.password_hash)) {
-    await recordAttempt("login", [emailLimit.subject, `ip:${ip}`]);
-    if (user && (await blockedFor([emailLimit]))) {
+    await recordAttempt("login", [limits.pair.subject, limits.email.subject, limits.ip.subject]);
+    if (user && (await blockedFor([limits.pair, limits.email])) && (await claimOwnerWarning(email))) {
       await emailUser(
         user.id,
         "Varias tentativas de entrar na sua conta",
-        "Houve varias tentativas de entrar na sua conta com a senha errada. Por seguranca, o login ficou bloqueado por 15 minutos. Se nao foi voce, recomendamos trocar sua senha.",
+        "Houve varias tentativas de entrar na sua conta com a senha errada. Por seguranca, novas tentativas foram bloqueadas por um tempo. Se nao foi voce, recomendamos trocar sua senha: isso tambem libera o login na hora.",
         "Trocar minha senha",
         "/esqueci-senha",
         "essential"
@@ -237,7 +240,7 @@ export async function login(formData: FormData) {
     }
     back(loginPage, "error", "Email ou senha incorretos.");
   }
-  await clearAttempts("login", emailLimit.subject);
+  await clearLoginAttempts(email);
   if (user!.account_status === "pending" && !REQUIRE_APPROVAL) {
     // Accounts created while approval was required are released automatically.
     await getDb().prepare("UPDATE users SET account_status = 'active' WHERE id = ?").run(user!.id);

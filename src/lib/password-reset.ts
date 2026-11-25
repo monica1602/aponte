@@ -1,6 +1,7 @@
 "use server";
 
 import { mailConfigured, sendMail } from "./mail";
+import { clearLoginAttempts } from "./login-guard";
 import { log } from "./log";
 import crypto from "node:crypto";
 import { passwordProblem } from "./password-policy";
@@ -102,6 +103,8 @@ export async function resetPassword(formData: FormData) {
   await getDb().prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?").run(hashPassword(password), row!.user_id);
   await getDb().prepare("UPDATE password_resets SET used_at = datetime('now') WHERE id = ?").run(row!.id);
   await getDb().prepare("DELETE FROM sessions WHERE user_id = ?").run(row!.user_id);
+  const owner = (await getDb().prepare("SELECT email FROM users WHERE id = ?").get(row!.user_id)) as { email: string } | undefined;
+  if (owner) await clearLoginAttempts(owner.email);
   await createSession(row!.user_id);
   back("/dashboard", "msg", "Senha redefinida. Voce ja esta conectado(a).");
 }
