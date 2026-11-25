@@ -4,6 +4,8 @@ import { listMeetings, meetingPath, type MeetingKind } from "./meetings";
 
 export const ATTACH_MAX_BYTES = 2 * 1024 * 1024;
 export const ATTACH_USER_TOTAL = 12 * 1024 * 1024;
+export const ATTACH_SITE_TOTAL = 300 * 1024 * 1024;
+export const ATTACH_SITE_WARN = 0.8;
 export const ATTACH_TITLE_MAX = 80;
 export const ATTACH_LIMIT = { max: 20, windowMin: 60 };
 export const ATTACH_SCOPES = ["resume", "profile", "project", "meeting", "event_material", "event_evidence"] as const;
@@ -132,6 +134,17 @@ export async function canRemoveAttachment(a: Attachment, userId: number): Promis
 export async function userAttachmentBytes(userId: number): Promise<number> {
   const r = (await getDb().prepare("SELECT COALESCE(SUM(size), 0) AS n FROM attachments WHERE owner_id = ?").get(userId)) as { n: number };
   return Number(r.n);
+}
+
+export async function siteAttachmentBytes(): Promise<number> {
+  const r = (await getDb().prepare("SELECT COALESCE(SUM(size), 0) AS n FROM attachments").get()) as { n: number };
+  return Number(r.n);
+}
+
+/** True only for the upload that takes the site total from below to at or above the warning level, so the admin is told once. */
+export function crossesSiteWarning(before: number, added: number): boolean {
+  const warn = ATTACH_SITE_TOTAL * ATTACH_SITE_WARN;
+  return before < warn && before + added >= warn;
 }
 
 export function attachmentPath(t: AttachTarget): string {

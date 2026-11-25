@@ -28,7 +28,7 @@ import { pendingLegalDocs, recordLegalAcceptance } from "./legal-acceptance";
 import { recordConsent, recordConsentChanges } from "./consents";
 import { canIssueCertificate, safeHomeOpen } from "./retention";
 import { promoteWaitlist } from "./waitlist";
-import { ATTACH_LIMIT, ATTACH_SCOPES, ATTACH_TITLE_MAX, ATTACH_USER_TOTAL, SCOPE_MAX, attachmentPath, canRemoveAttachment, canViewAttachment, fileProblem, getAttachment, safeFilename, sniffType, uploadDenied, userAttachmentBytes, whereFor, type AttachScope, type AttachTarget } from "./attachments";
+import { ATTACH_LIMIT, ATTACH_SCOPES, ATTACH_SITE_TOTAL, crossesSiteWarning, siteAttachmentBytes, ATTACH_TITLE_MAX, ATTACH_USER_TOTAL, SCOPE_MAX, attachmentPath, canRemoveAttachment, canViewAttachment, fileProblem, getAttachment, safeFilename, sniffType, uploadDenied, userAttachmentBytes, whereFor, type AttachScope, type AttachTarget } from "./attachments";
 import { eventReviewTarget, mentorshipReviewTarget, myReview, reviewProblem } from "./reviews";
 import { REPORT_LIMIT, REPORT_REASONS, blockedBetween, reportProblem, type ReportOutcome, type ReportTarget } from "./moderation";
 import { eventHasHistory } from "./event-history";
@@ -1954,6 +1954,8 @@ export async function uploadAttachment(formData: FormData) {
     back(ret, "error", t.scope === "resume" || t.scope === "event_evidence" ? "Voce ja enviou este arquivo. Remova o atual para enviar outro." : `O limite aqui e de ${SCOPE_MAX[t.scope]} arquivos. Remova um para enviar outro.`);
   }
   if ((await userAttachmentBytes(user.id)) + bytes.length > ATTACH_USER_TOTAL) back(ret, "error", "Voce chegou ao limite de 12 MB em arquivos. Remova algum para enviar outro.");
+  const siteBytes = await siteAttachmentBytes();
+  if (siteBytes + bytes.length > ATTACH_SITE_TOTAL) back(ret, "error", "O espaco para arquivos da Ponte esta cheio no momento. Tente de novo mais tarde.");
   const name = (file as File).name || "arquivo";
   const title = str(formData, "title").slice(0, ATTACH_TITLE_MAX) || (t.scope === "resume" ? "Curriculo" : name.replace(/\.[^.]*$/, "").slice(0, ATTACH_TITLE_MAX));
   const col = t.scope === "project" ? "project_id" : t.scope === "meeting" ? (t.meetingKind === "company" ? "company_meeting_id" : "mentorship_meeting_id") : t.scope.startsWith("event_") ? "event_id" : null;
@@ -1962,6 +1964,9 @@ export async function uploadAttachment(formData: FormData) {
   ).run(...[user.id, t.scope, ...(col ? [t.projectId ?? 0] : []), title, safeFilename(name, type!), type!, bytes.length, Buffer.from(bytes).toString("base64")]);
   await recordAttempt("attachment", [limit.subject]);
   await audit(user.id, "attachment.uploaded", "attachment", Number(r.lastInsertRowid));
+  if (crossesSiteWarning(siteBytes, bytes.length)) {
+    await alertAdmin(`Os arquivos enviados chegaram a ${Math.round(((siteBytes + bytes.length) / ATTACH_SITE_TOTAL) * 100)}% do limite de 300 MB do site. Ao chegar em 100%, novos envios serao recusados.`);
+  }
   back(ret, "msg", "Arquivo enviado.");
 }
 
