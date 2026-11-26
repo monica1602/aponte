@@ -18,6 +18,7 @@ test("eventos de mentorados: criar, convidar, aprovacao do admin e inscricao do 
   await form.locator("input[name=starts_at]").fill(brt(60));
   await form.locator("input[name=ends_at]").fill(brt(120));
   await form.locator("input[name=online_url]").fill("https://meet.example.com/grupo");
+  await form.locator("input[name=website_url]").fill("lu.ma/grupo-e2e");
   await form.getByRole("button", { name: "Enviar para aprovacao" }).click();
   await expect(maria.getByText("Este evento aguarda a aprovacao da administracao.")).toBeVisible();
   const eventId = Number(maria.url().match(/eventos\/(\d+)/)?.[1]);
@@ -37,6 +38,7 @@ test("eventos de mentorados: criar, convidar, aprovacao do admin e inscricao do 
   const admin = await (await browser.newContext({ baseURL: MAIN })).newPage();
   await adminLogin(admin);
   await admin.goto("/admin/eventos");
+  await expect(admin.getByRole("link", { name: "lu.ma/grupo-e2e" })).toHaveAttribute("href", "https://lu.ma/grupo-e2e");
   const card = admin.locator("li").filter({ hasText: title });
   await expect(card.getByText("Convidados: Carlos Lima")).toBeVisible();
   await card.getByRole("button", { name: "Aprovar" }).click();

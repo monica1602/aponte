@@ -127,6 +127,7 @@ function EventCreator({ mentee = false }: { mentee?: boolean }) {
           <input name="ends_at" type="datetime-local" required className={inputCls} />
         </div>
         <input name="online_url" type="text" inputMode="url" placeholder="Link do encontro online (ex.: meet.google.com/abc-defg-hij)" className={inputCls} />
+        <input name="website_url" type="text" inputMode="url" maxLength={500} placeholder="Site oficial do evento (opcional, ex.: lu.ma/meu-evento)" aria-label="Site oficial do evento" className={inputCls} />
         <input name="location" placeholder="Endereco / local presencial" className={inputCls} />
         <div className="grid gap-3 sm:grid-cols-3">
           <select name="category" aria-label="Categoria" className={inputCls} defaultValue="" required={mentee}>

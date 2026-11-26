@@ -51,6 +51,7 @@ import { DELETE_KINDS, DELETE_KIND_PT, DELETE_REASON_MAX, deleteAsAdmin, type De
 import { adminConfirmEmail, createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
+const WEBSITE_MAX = 500;
 
 async function nameOf(id: number): Promise<string> {
   const r = (await getDb().prepare("SELECT name FROM users WHERE id = ?").get(id)) as { name: string } | undefined;
@@ -784,6 +785,7 @@ export async function createEvent(formData: FormData) {
   const startsAt = str(formData, "starts_at");
   const endsAt = str(formData, "ends_at");
   const onlineUrl = bareUrl(str(formData, "online_url"));
+  const websiteUrl = bareUrl(str(formData, "website_url"));
   const location = str(formData, "location");
   const capacityText = str(formData, "capacity");
   const capacity = capacityText ? Number(capacityText) : null;
@@ -803,21 +805,24 @@ export async function createEvent(formData: FormData) {
   if ((modality === "in_person" || modality === "hybrid") && !location) {
     back("/dashboard", "error", "Informe o local do evento presencial.");
   }
+  if (websiteUrl && (websiteUrl.length > WEBSITE_MAX || !LINK_RE.test(websiteUrl))) {
+    back("/dashboard", "error", "Site oficial do evento: informe um endereco valido, por exemplo lu.ma/meu-evento");
+  }
   if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) {
     back("/dashboard", "error", "A capacidade deve ser um numero inteiro maior que zero.");
   }
 
   const result = await getDb()
     .prepare(
-      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer, certificate_theme, status, approval_status)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer, certificate_theme, status, approval_status, website_url)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       user.id, title, str(formData, "description"), modality, startsAt, endsAt,
       onlineUrl, location, capacity, formData.get("require_approval") === "on" ? 1 : 0,
       str(formData, "category"), str(formData, "city"), str(formData, "state").toUpperCase().slice(0, 2),
       str(formData, "organizer") || user.name, validCertificateTheme(str(formData, "certificate_theme")),
-      mentee ? "draft" : "published", mentee ? "pending" : "approved"
+      mentee ? "draft" : "published", mentee ? "pending" : "approved", websiteUrl
     );
   const eventId = Number(result.lastInsertRowid);
   await audit(user.id, "event.created", "event", eventId);
@@ -852,6 +857,7 @@ export async function updateEvent(formData: FormData) {
   const startsAt = str(formData, "starts_at");
   const endsAt = str(formData, "ends_at");
   const onlineUrl = bareUrl(str(formData, "online_url"));
+  const websiteUrl = bareUrl(str(formData, "website_url"));
   const location = str(formData, "location");
   const city = str(formData, "city");
   const state = str(formData, "state").toUpperCase().slice(0, 2);
@@ -867,6 +873,9 @@ export async function updateEvent(formData: FormData) {
     back(ret, "error", "Link do encontro: informe um endereco valido, por exemplo meet.google.com/abc-defg-hij");
   }
   if ((modality === "in_person" || modality === "hybrid") && !location) back(ret, "error", "Informe o local do evento presencial.");
+  if (websiteUrl && (websiteUrl.length > WEBSITE_MAX || !LINK_RE.test(websiteUrl))) {
+    back(ret, "error", "Site oficial do evento: informe um endereco valido, por exemplo lu.ma/meu-evento");
+  }
   if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) {
     back(ret, "error", "A capacidade deve ser um numero inteiro maior que zero.");
   }
@@ -877,10 +886,10 @@ export async function updateEvent(formData: FormData) {
 
   await db.prepare(
     `UPDATE events SET title = ?, description = ?, modality = ?, starts_at = ?, ends_at = ?, online_url = ?, location = ?, capacity = ?,
-       require_approval = ?, category = ?, city = ?, state = ?, certificate_theme = ? WHERE id = ? AND owner_id = ?`
+       require_approval = ?, category = ?, city = ?, state = ?, certificate_theme = ?, website_url = ? WHERE id = ? AND owner_id = ?`
   ).run(
     title, str(formData, "description"), modality, startsAt, endsAt, onlineUrl, location, capacity,
-    formData.get("require_approval") === "on" ? 1 : 0, str(formData, "category"), city, state, validCertificateTheme(str(formData, "certificate_theme")), id, user.id
+    formData.get("require_approval") === "on" ? 1 : 0, str(formData, "category"), city, state, validCertificateTheme(str(formData, "certificate_theme")), websiteUrl, id, user.id
   );
   await audit(user.id, "event.updated", "event", id);
 

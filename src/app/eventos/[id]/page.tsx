@@ -77,6 +77,7 @@ export default async function EventoPage({
       {draft && !rejected && <p className="mt-3 rounded-md border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-sm text-amber-200">Este evento aguarda a aprovacao da administracao. So voce ve esta pagina. Os convites saem quando ele for aprovado.</p>}
       {rejected && <p className="mt-3 rounded-md border border-red-400/30 bg-red-400/5 px-3 py-2 text-sm text-red-300 [overflow-wrap:anywhere]">A administracao recusou este evento. Motivo: {e.approval_note}</p>}
       <p className="mt-2 text-sm text-muted">Organizado por {e.organizer || e.owner_name}</p>
+      {e.website_url && <a href={externalHref(e.website_url)} target="_blank" rel="noopener noreferrer" className={`${btnSecondaryCls} mt-3`}>Site oficial do evento</a>}
       {user && user.id !== e.owner_id && <div className="mt-2"><ReportForm type="event" id={e.id} ret={`/eventos/${e.id}`} label="Denunciar evento" /></div>}
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <Card><dt className="text-xs text-muted">Quando</dt><dd className="mt-1 text-sm">{new Date(e.starts_at).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" })} ate {new Date(e.ends_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</dd></Card>

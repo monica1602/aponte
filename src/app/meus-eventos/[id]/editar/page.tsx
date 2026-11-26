@@ -50,6 +50,7 @@ export default async function EditarEventoPage({ params, searchParams }: {
             <input name="ends_at" type="datetime-local" required defaultValue={String(e.ends_at).slice(0, 16)} aria-label="Termino" className={inputCls} />
           </div>
           <input name="online_url" type="text" inputMode="url" defaultValue={e.online_url} placeholder="Link do encontro online (ex.: meet.google.com/abc-defg-hij)" aria-label="Link do encontro" className={inputCls} />
+          <input name="website_url" type="text" inputMode="url" maxLength={500} defaultValue={e.website_url} placeholder="Site oficial do evento (opcional, ex.: lu.ma/meu-evento)" aria-label="Site oficial do evento" className={inputCls} />
           <input name="location" defaultValue={e.location} placeholder="Endereco / local presencial" aria-label="Local" className={inputCls} />
           <div className="grid gap-3 sm:grid-cols-3">
             <select name="category" aria-label="Categoria" className={inputCls} defaultValue={e.category}>

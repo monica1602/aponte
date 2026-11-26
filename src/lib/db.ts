@@ -90,6 +90,7 @@ export interface PlatformEvent {
   certificate_theme: string;
   approval_status: string;
   approval_note: string;
+  website_url: string;
   created_at: string;
 }
 
@@ -710,6 +711,7 @@ async function ensureMigrations(db: Db) {
     review_invited_at: "TEXT",
     approval_status: "TEXT NOT NULL DEFAULT 'approved'",
     approval_note: "TEXT NOT NULL DEFAULT ''",
+    website_url: "TEXT NOT NULL DEFAULT ''",
   });
   await addColumns(db, "reports", { sensitive: "INTEGER NOT NULL DEFAULT 0" });
   await addColumns(db, "certificates", {
