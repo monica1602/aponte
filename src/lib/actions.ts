@@ -20,6 +20,7 @@ import {
   isAdmin,
 } from "./auth";
 import { activeTwoFactor, checkSecondFactor, disableTwoFactor, enableTwoFactor, twoFactorResetOn } from "./admin-2fa";
+import { closeAllAdminSessions } from "./admin-sessions";
 import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
@@ -188,6 +189,7 @@ export async function disableAdminTwoFactor(formData: FormData) {
   await disableTwoFactor();
   await audit(null, "admin.2fa_disabled", "admin", null);
   await destroyAdminSession();
+  await closeAllAdminSessions();
   await createAdminSetup();
   back("/admin/seguranca", "msg", "Aplicativo antigo desligado. Leia o novo QR code para voltar ao painel.");
 }
@@ -195,6 +197,14 @@ export async function disableAdminTwoFactor(formData: FormData) {
 export async function adminLogout() {
   await destroyAdminSession();
   redirect("/admin/login");
+}
+
+export async function adminLogoutEverywhere() {
+  if (!(await isAdmin())) redirect("/admin/login");
+  await destroyAdminSession();
+  await closeAllAdminSessions();
+  await audit(null, "admin.sessions_closed", "admin", null);
+  back("/admin/login", "msg", "Todas as sessoes da administracao foram encerradas, inclusive esta. Entre de novo.");
 }
 
 export async function addInvite(formData: FormData) {

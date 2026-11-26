@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import QRCode from "qrcode";
-import { disableAdminTwoFactor, dismissRecoveryCodes, enableAdminTwoFactor } from "@/lib/actions";
+import { adminLogoutEverywhere, disableAdminTwoFactor, dismissRecoveryCodes, enableAdminTwoFactor } from "@/lib/actions";
 import { activeTwoFactor, pendingTwoFactor, recoveryCodesLeft, twoFactorResetOn } from "@/lib/admin-2fa";
 import { hasAdminSetup, isAdmin } from "@/lib/auth";
 import { otpauthUri } from "@/lib/totp";
@@ -97,7 +97,20 @@ export default async function AdminSecurityPage({
       <h1 className="mb-6 text-2xl font-bold">Seguranca</h1>
       {!full && <p className="mb-4 max-w-lg text-sm text-amber-200/80">Os dois fatores sao obrigatorios. Ative-os para abrir o painel da administracao.</p>}
       <Flash params={sp} />
-      <div className="max-w-lg">{body}</div>
+      <div className="max-w-lg space-y-4">
+        {body}
+        {full && (
+          <Card>
+            <h2 className="font-semibold">Sessoes</h2>
+            <p className="mt-1 text-sm text-muted">
+              A sessao da administracao cai depois de 1 hora sem uso e, no maximo, 8 horas depois do login. Se voce entrou em outro aparelho ou desconfia de acesso indevido, encerre todas, inclusive esta.
+            </p>
+            <form action={adminLogoutEverywhere} className="mt-4">
+              <button className={btnSecondaryCls}>Sair de todos os aparelhos</button>
+            </form>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

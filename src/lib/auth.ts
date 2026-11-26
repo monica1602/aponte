@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { getDb, type User } from "./db";
 import { activeTwoFactor, twoFactorResetOn } from "./admin-2fa";
+import { ADMIN_SESSION_MAX_MS, checkAdminSession, closeAdminSession, openAdminSession } from "./admin-sessions";
 
 const COOKIE = "ponte_session";
 const TTL_MS = 1000 * 60 * 60 * 24 * 30;
@@ -49,21 +50,19 @@ export async function destroySession() {
 }
 
 const ADMIN_COOKIE = "ponte_admin";
-const ADMIN_TTL_S = 60 * 60 * 8;
 
 function adminSig(exp: string, secret: string): Buffer {
   return crypto.createHmac("sha256", secret).update(exp).digest();
 }
 
 export async function createAdminSession() {
-  const exp = String(Date.now() + ADMIN_TTL_S * 1000);
-  const sig = adminSig(exp, process.env.ADMIN_PASSWORD ?? "").toString("hex");
+  const token = await openAdminSession();
   const store = await cookies();
-  store.set(ADMIN_COOKIE, `${exp}.${sig}`, {
+  store.set(ADMIN_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
-    maxAge: ADMIN_TTL_S,
+    maxAge: ADMIN_SESSION_MAX_MS / 1000,
     secure: process.env.NODE_ENV === "production",
   });
 }
@@ -104,18 +103,7 @@ export async function clearAdminPending() {
 }
 
 export async function isAdmin(): Promise<boolean> {
-  const secret = process.env.ADMIN_PASSWORD;
-  if (!secret) return false;
-  const store = await cookies();
-  const raw = store.get(ADMIN_COOKIE)?.value;
-  if (!raw) return false;
-  const dot = raw.lastIndexOf(".");
-  const exp = raw.slice(0, dot);
-  const sig = raw.slice(dot + 1);
-  if (!exp || !sig || Number(exp) < Date.now()) return false;
-  const expected = adminSig(exp, secret);
-  const got = Buffer.from(sig, "hex");
-  if (got.length !== expected.length || !crypto.timingSafeEqual(got, expected)) return false;
+  if (!(await checkAdminSession((await cookies()).get(ADMIN_COOKIE)?.value))) return false;
   return twoFactorResetOn() || !!(await activeTwoFactor());
 }
 
@@ -155,5 +143,6 @@ export async function clearAdminSetup() {
 
 export async function destroyAdminSession() {
   const store = await cookies();
+  await closeAdminSession(store.get(ADMIN_COOKIE)?.value);
   store.delete(ADMIN_COOKIE);
 }

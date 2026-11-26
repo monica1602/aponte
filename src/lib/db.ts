@@ -169,6 +169,13 @@ CREATE TABLE IF NOT EXISTS admin_2fa (
   last_step INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token_hash TEXT PRIMARY KEY,
+  password_tag TEXT NOT NULL,
+  idle_expires_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS admin_recovery_codes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code_hash TEXT NOT NULL UNIQUE,

@@ -4,7 +4,7 @@ import { Card, Flash, inputCls, btnCls } from "@/components/ui";
 export default async function AdminLoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ msg?: string; error?: string }>;
 }) {
   const sp = await searchParams;
   return (
