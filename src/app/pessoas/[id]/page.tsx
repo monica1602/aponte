@@ -6,6 +6,7 @@ import { ImpactGrid } from "@/components/impact";
 import { getSessionUser } from "@/lib/auth";
 import { blockUser, inviteToCompany, requestMentorship, sendMessage, toggleEndorsement } from "@/lib/actions";
 import { blockedBetween, hasBlocked } from "@/lib/moderation";
+import { externalHref, linkHost } from "@/lib/url";
 import { ReportForm } from "@/components/report-form";
 import { AttachmentList } from "@/components/attachments";
 import { canSeeResume, listAttachments } from "@/lib/attachments";
@@ -224,10 +225,13 @@ export default async function PessoaPage({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium">
                       <Badge kind={c.type} label={TYPE_LABELS[c.type] ?? c.type} />{" "}
-                      {c.url ? (
-                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                          {c.title} ↗
-                        </a>
+                      {linkHost(c.url) ? (
+                        <>
+                          <a href={externalHref(c.url)} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                            {c.title} ↗
+                          </a>{" "}
+                          <span className="text-xs font-normal text-muted">{linkHost(c.url)}</span>
+                        </>
                       ) : (
                         c.title
                       )}

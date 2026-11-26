@@ -25,7 +25,7 @@ import { PAYMENT_INFO_MAX, PRICE_MAX_CENTS, PRICE_MIN_CENTS, parsePrice } from "
 import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
-import { bareUrl } from "./url";
+import { LINK_RE, bareUrl } from "./url";
 import { checkInWindow, checkOutOpen, eventEnded, eventStarted, spTime } from "./event-time";
 import { adminLoginLimits, claimOwnerWarning, clearLoginAttempts, loginLimits, passwordMatches, progressiveWait, sameSecret, waitSecondsMessage } from "./login-guard";
 import { looksLikeBot, signupAlertText, SIGNUP_SITE_LIMIT } from "./signup-guard";
@@ -52,8 +52,9 @@ import { PENDING_EVENTS_MAX, REJECT_REASON_MAX, addInvite as addEventInvite, app
 import { DELETE_KINDS, DELETE_KIND_PT, DELETE_REASON_MAX, deleteAsAdmin, type DeleteKind } from "./admin-delete";
 import { adminConfirmEmail, createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
-const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
 const WEBSITE_MAX = 500;
+const CONTRIBUTION_TITLE_MAX = 150;
+const CONTRIBUTION_DESCRIPTION_MAX = 1000;
 
 async function nameOf(id: number): Promise<string> {
   const r = (await getDb().prepare("SELECT name FROM users WHERE id = ?").get(id)) as { name: string } | undefined;
@@ -701,6 +702,13 @@ export async function addContribution(formData: FormData) {
   if (user.role !== "mentee") redirect("/dashboard");
   const title = str(formData, "title");
   if (!title) back("/dashboard", "error", "Titulo da contribuicao e obrigatorio.");
+  if (title.length > CONTRIBUTION_TITLE_MAX) back("/dashboard", "error", `Titulo da contribuicao: use no maximo ${CONTRIBUTION_TITLE_MAX} caracteres.`);
+  const url = bareUrl(str(formData, "url"));
+  if (url && (url.length > WEBSITE_MAX || !LINK_RE.test(url))) {
+    back("/dashboard", "error", "Link da contribuicao: informe um endereco valido, por exemplo github.com/meu-projeto");
+  }
+  const description = str(formData, "description");
+  if (description.length > CONTRIBUTION_DESCRIPTION_MAX) back("/dashboard", "error", `Descricao da contribuicao: use no maximo ${CONTRIBUTION_DESCRIPTION_MAX} caracteres.`);
   await getDb()
     .prepare(
       "INSERT INTO contributions (user_id, title, url, type, description) VALUES (?,?,?,?,?)"
@@ -708,9 +716,9 @@ export async function addContribution(formData: FormData) {
     .run(
       user.id,
       title,
-      str(formData, "url"),
+      url,
       str(formData, "type") || "projeto",
-      str(formData, "description")
+      description
     );
   back("/dashboard", "msg", "Contribuicao publicada no seu perfil.");
 }

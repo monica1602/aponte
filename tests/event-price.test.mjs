@@ -12,3 +12,10 @@ test("valor do evento: aceita formatos em reais e recusa texto", () => {
   assert.equal(priceInput(5050), "50,50");
   assert.equal(priceInput(0), "");
 });
+
+test("link da contribuicao: dominio so para enderecos de site validos", async () => {
+  const { linkHost } = await import("../src/lib/url.ts");
+  assert.equal(linkHost("https://www.GitHub.com/ana/x"), "github.com");
+  assert.equal(linkHost("lu.ma/evento?x=1"), "lu.ma");
+  for (const bad of ["", "//site-falso.com", "javascript:alert(1)", "data:text/html,oi", "/admin", "ftp://x.com", "texto solto"]) assert.equal(linkHost(bad), "", bad);
+});

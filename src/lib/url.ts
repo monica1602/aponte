@@ -1,3 +1,12 @@
+export const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
+
+/** Domain shown next to a link ("github.com"), or "" when the stored address is not a valid site address. */
+export function linkHost(v: string | undefined | null): string {
+  const t = (v ?? "").trim();
+  if (!t || !LINK_RE.test(t)) return "";
+  return bareUrl(t).split(/[/?#:]/)[0].toLowerCase().replace(/^www\./, "");
+}
+
 /** Address as the user typed it, without the http(s):// prefix. */
 export function bareUrl(v: string | undefined | null): string {
   return (v ?? "").replace(/^https?:\/\//i, "");

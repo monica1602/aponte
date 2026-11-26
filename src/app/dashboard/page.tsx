@@ -554,16 +554,16 @@ export default async function DashboardPage({
                 Projetos, PRs, palestras e eventos — visiveis no seu perfil publico para empresas.
               </p>
               <form action={addContribution} className="mt-3 space-y-3">
-                <input name="title" required placeholder="Titulo da contribuicao" className={inputCls} />
+                <input name="title" required maxLength={150} placeholder="Titulo da contribuicao" className={inputCls} />
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <input name="url" type="url" placeholder="Link (opcional)" className={inputCls} />
+                  <input name="url" type="text" inputMode="url" maxLength={500} placeholder="Link (opcional, ex.: github.com/meu-projeto)" aria-label="Link da contribuicao" className={inputCls} />
                   <select name="type" className={inputCls}>
                     <option value="projeto">Projeto</option>
                     <option value="open_source">Open source</option>
                     <option value="evento">Evento / palestra</option>
                   </select>
                 </div>
-                <textarea name="description" rows={2} placeholder="O que voce fez?" className={inputCls} />
+                <textarea name="description" rows={2} maxLength={1000} placeholder="O que voce fez?" className={inputCls} />
                 <button className={btnSecondaryCls}>Publicar contribuicao</button>
               </form>
               {myContribs.length > 0 && (
