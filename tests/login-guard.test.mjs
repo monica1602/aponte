@@ -5,9 +5,9 @@ import os from "node:os";
 import path from "node:path";
 
 if (!process.env.DATABASE_URL) process.env.DATABASE_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "ponte-lg-")), "test.db");
-const { loginLimits, secondsToWait, progressiveWait, clearLoginAttempts, claimOwnerWarning } = await import("../src/lib/login-guard.ts");
+const { loginLimits, secondsToWait, progressiveWait, clearLoginAttempts, claimOwnerWarning, passwordMatches } = await import("../src/lib/login-guard.ts");
 const { blockedFor, recordAttempt } = await import("../src/lib/rate-limit.ts");
-const { getDb } = await import("../src/lib/db.ts");
+const { getDb, hashPassword } = await import("../src/lib/db.ts");
 
 const S = 1000;
 const fail = (email, ip) => {
@@ -54,4 +54,15 @@ test("aviso ao dono no maximo 1 vez a cada 24 horas", async () => {
   assert.equal(await claimOwnerWarning("caio@x.com", now + 60 * 60 * S), false);
   assert.equal(await claimOwnerWarning("duda@x.com", now), true);
   assert.equal(await claimOwnerWarning("caio@x.com", now + 25 * 60 * 60 * S), true);
+});
+
+test("login confere a senha mesmo sem conta: o tempo fica parecido nos 2 casos", () => {
+  const stored = hashPassword("Certa@2026");
+  assert.equal(passwordMatches("Certa@2026", stored), true);
+  assert.equal(passwordMatches("Errada@2026", stored), false);
+  assert.equal(passwordMatches("Certa@2026", undefined), false);
+  const time = (fn) => { const t = process.hrtime.bigint(); for (let i = 0; i < 5; i++) fn(); return Number(process.hrtime.bigint() - t); };
+  const existe = time(() => passwordMatches("Errada@2026", stored));
+  const naoExiste = time(() => passwordMatches("Errada@2026", undefined));
+  assert.ok(naoExiste > existe * 0.5 && naoExiste < existe * 2, `existe=${existe} naoExiste=${naoExiste}`);
 });

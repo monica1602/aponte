@@ -22,7 +22,7 @@ import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
 import { checkInWindow, checkOutOpen, eventEnded, eventStarted, spTime } from "./event-time";
-import { claimOwnerWarning, clearLoginAttempts, loginLimits, progressiveWait, waitSecondsMessage } from "./login-guard";
+import { claimOwnerWarning, clearLoginAttempts, loginLimits, passwordMatches, progressiveWait, waitSecondsMessage } from "./login-guard";
 import { looksLikeBot, signupAlertText, SIGNUP_SITE_LIMIT } from "./signup-guard";
 import { blockedFor, recordAttempt, tooManyMessage } from "./rate-limit";
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
@@ -226,7 +226,7 @@ export async function login(formData: FormData) {
   const user = await getDb().prepare("SELECT * FROM users WHERE email = ?").get(email) as
     | User
     | undefined;
-  if (!user || !verifyPassword(password, user.password_hash)) {
+  if (!passwordMatches(password, user?.password_hash) || !user) {
     await recordAttempt("login", [limits.pair.subject, limits.email.subject, limits.ip.subject]);
     if (user && (await blockedFor([limits.pair, limits.email])) && (await claimOwnerWarning(email))) {
       await emailUser(
@@ -279,6 +279,9 @@ export async function registerAccount(formData: FormData) {
   if (looksLikeBot(formData)) back(ret, "error", "Nao foi possivel criar a conta. Aguarde alguns segundos e tente de novo.");
   const wait = await blockedFor([{ action: "signup", subject: `ip:${ip}`, max: 20, windowMin: 60 }]);
   if (wait) back(ret, "error", tooManyMessage(wait));
+  const repeatedLimit = { action: "signup_repeated", subject: `ip:${ip}`, max: 5, windowMin: 60 };
+  const repeatedWait = await blockedFor([repeatedLimit]);
+  if (repeatedWait) back(ret, "error", tooManyMessage(repeatedWait));
   const siteWait = await blockedFor([SIGNUP_SITE_LIMIT]);
   if (siteWait) back(ret, "error", `Muitos cadastros agora. Tente de novo em ${siteWait} minuto${siteWait > 1 ? "s" : ""}.`);
   if (name.length < 2) back(ret, "error", "Informe seu nome (ou o nome da empresa) com pelo menos 2 caracteres.");
@@ -297,6 +300,7 @@ export async function registerAccount(formData: FormData) {
   }
   const db = getDb();
   if (await db.prepare("SELECT id FROM users WHERE email = ?").get(email)) {
+    await recordAttempt(repeatedLimit.action, [repeatedLimit.subject]);
     back(ret, "error", "Este email ja possui cadastro.");
   }
   const result = await db.prepare(

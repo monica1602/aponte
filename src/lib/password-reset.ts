@@ -6,6 +6,7 @@ import { log } from "./log";
 import crypto from "node:crypto";
 import { passwordProblem } from "./password-policy";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { siteUrlFrom } from "./environment";
 import { getDb, hashPassword } from "./db";
 import { createSession } from "./auth";
@@ -75,7 +76,8 @@ export async function requestPasswordReset(formData: FormData) {
     await getDb()
       .prepare("INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?,?,?)")
       .run(user.id, hashToken(token), Date.now() + TTL_MS);
-    await sendResetEmail(email, user.name, `${await siteUrl()}/redefinir-senha?token=${token}`);
+    const link = `${await siteUrl()}/redefinir-senha?token=${token}`;
+    after(() => sendResetEmail(email, user.name, link));
   }
   // Same answer whether or not the email exists, so accounts can't be discovered.
   back("/esqueci-senha", "msg", "Se este email estiver cadastrado, enviamos um link para redefinir a senha. Confira a caixa de entrada e o spam.");

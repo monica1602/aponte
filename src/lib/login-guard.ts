@@ -1,4 +1,4 @@
-import { getDb } from "./db";
+import { getDb, hashPassword, verifyPassword } from "./db";
 import type { Limit } from "./rate-limit";
 
 const WINDOW_MIN = 15;
@@ -52,4 +52,14 @@ export async function claimOwnerWarning(email: string, now = Date.now()): Promis
   if (Number(last?.t ?? 0) > now - OWNER_WARNING_EVERY_MS) return false;
   await db.prepare("INSERT INTO auth_attempts (action, subject, attempted_at) VALUES ('login_warning', ?, ?)").run(subject, now);
   return true;
+}
+
+let missingUserHash: string | undefined;
+
+/** Confere a senha mesmo quando o e-mail nao existe, para o login levar o mesmo tempo nos 2 casos. */
+export function passwordMatches(password: string, stored: string | undefined): boolean {
+  if (stored) return verifyPassword(password, stored);
+  missingUserHash ??= hashPassword(crypto.randomUUID());
+  verifyPassword(password, missingUserHash);
+  return false;
 }
