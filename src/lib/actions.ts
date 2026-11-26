@@ -44,6 +44,7 @@ import {
 import { MESSAGE_EMAIL_GAP_MIN, MESSAGE_LIMIT, canMessageDirect, conversationBetween, getConversation, messageProblem, otherOf, pair, type ConversationRow } from "./messages";
 import { MENTEE_EVENT_CATEGORIES } from "./catalog";
 import { PENDING_EVENTS_MAX, REJECT_REASON_MAX, addInvite as addEventInvite, approveEvent, declineInvite, pendingEventCount, rejectEvent } from "./event-invites";
+import { DELETE_KINDS, DELETE_KIND_PT, DELETE_REASON_MAX, deleteAsAdmin, type DeleteKind } from "./admin-delete";
 import { adminConfirmEmail, createVerificationToken, sendVerificationEmail, markVerificationUsed, verificationTarget } from "./email-verification";
 
 const LINK_RE = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
@@ -1945,6 +1946,20 @@ export async function adminConfirmUserEmail(formData: FormData) {
   if (!(await adminConfirmEmail(id))) back(path, "error", "Este e-mail nao esta aguardando confirmacao.");
   await audit(null, "email.verified_by_admin", "user", id);
   back(path, "msg", "E-mail confirmado. A pessoa ja pode usar todas as funcoes.");
+}
+
+export async function adminDelete(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const kind = str(formData, "kind") as DeleteKind;
+  const id = Number(formData.get("id"));
+  if (!DELETE_KINDS.includes(kind) || !Number.isInteger(id) || id <= 0) back("/admin", "error", "Item invalido.");
+  const ret = `/admin/excluir/${kind}/${id}`;
+  const reason = str(formData, "reason").slice(0, DELETE_REASON_MAX);
+  if (reason.length < 3) back(ret, "error", "Escreva o motivo da exclusao.");
+  if (formData.get("confirm") !== "1") back(ret, "error", "Marque a confirmacao para excluir definitivamente.");
+  const done = await deleteAsAdmin(kind, id, reason);
+  if (!done) back("/admin", "error", "Nao encontrado. Talvez ja tenha sido excluido.");
+  back(done.list, "msg", `${DELETE_KIND_PT[kind]} "${done.title}" excluido(a) definitivamente. Motivo registrado.`);
 }
 
 export async function submitReview(formData: FormData) {

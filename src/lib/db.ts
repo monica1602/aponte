@@ -586,6 +586,14 @@ CREATE TABLE IF NOT EXISTS data_requests (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   answered_at TEXT
 );
+CREATE TABLE IF NOT EXISTS admin_deletions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  detail TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL,
+  deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE INDEX IF NOT EXISTS idx_projects_kind ON projects(kind, visibility, status);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
 `;

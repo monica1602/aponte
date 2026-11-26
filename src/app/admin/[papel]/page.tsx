@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
 import { EMAIL_STATUS_PT, listPeople, type Ref, type Role } from "@/lib/admin-data";
 import { AdminNav } from "@/components/admin-nav";
-import { Card, Empty } from "@/components/ui";
+import { Card, Empty, Flash } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Admin — Ponte" };
@@ -31,12 +31,13 @@ function Refs({ items, kind }: { items: Ref[]; kind: "user" | "project" }) {
   );
 }
 
-export default async function AdminListPage({ params, searchParams }: { params: Promise<{ papel: string }>; searchParams: Promise<{ q?: string }> }) {
+export default async function AdminListPage({ params, searchParams }: { params: Promise<{ papel: string }>; searchParams: Promise<{ q?: string; msg?: string; error?: string }> }) {
   if (!(await isAdmin())) redirect("/admin/login");
   const { papel } = await params;
   const page = PAGES[papel];
   if (!page) notFound();
-  const q = ((await searchParams).q ?? "").trim().toLowerCase();
+  const sp = await searchParams;
+  const q = (sp.q ?? "").trim().toLowerCase();
   const people = (await listPeople(page.role)).filter((p) => !q || `${p.name} ${p.email}`.toLowerCase().includes(q));
   const cols =
     page.role === "mentee" ? ["Mentores", "Projetos", "Empresas"]
@@ -45,6 +46,7 @@ export default async function AdminListPage({ params, searchParams }: { params: 
   return (
     <div className="py-8">
       <AdminNav current={`/admin/${papel}`} />
+      <Flash params={sp} />
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-bold">{page.title} <span className="text-base font-normal text-muted">({people.length})</span></h1>
         <form method="GET" className="flex gap-2">

@@ -70,6 +70,7 @@ export default async function AdminUserPage({ params, searchParams }: { params: 
         <h1 className="text-2xl font-bold">{String(user.name)}</h1>
         <Badge kind={role} label={ROLE_LABELS[role]} />
         <Link href={`/pessoas/${row.id}`} className="text-sm text-accent hover:underline">Ver perfil publico</Link>
+        <Link href={`/admin/excluir/conta/${row.id}`} className="text-sm text-red-300 hover:underline">Excluir conta</Link>
       </div>
       <Flash params={await searchParams} />
       <p className="mb-6 text-xs text-amber-200/80">Dados pessoais protegidos pela LGPD. Use apenas para a gestao da plataforma.</p>

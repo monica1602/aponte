@@ -33,6 +33,7 @@ export default async function AdminEventsPage({ searchParams }: { searchParams: 
             <div className="mt-3 flex flex-wrap items-start gap-3">
               <form action={adminApproveEvent}><input type="hidden" name="event_id" value={p.id} /><button className={btnCls}>Aprovar</button></form>
               <form action={adminRejectEvent} className="flex flex-1 flex-wrap gap-2"><input type="hidden" name="event_id" value={p.id} /><input name="reason" required maxLength={300} placeholder="Motivo da recusa (a pessoa recebe este texto)" aria-label="Motivo da recusa" className={`${inputCls} min-w-48 flex-1`} /><button className={btnSecondaryCls}>Recusar</button></form>
+              <Link href={`/admin/excluir/evento/${p.id}`} className="self-center text-sm text-red-300 hover:underline">Excluir</Link>
             </div>
           </Card></li>
         ))}</ul>
@@ -40,7 +41,7 @@ export default async function AdminEventsPage({ searchParams }: { searchParams: 
       <h1 className="mb-1 text-2xl font-bold">Eventos <span className="text-base font-normal text-muted">({events.length})</span></h1>
       <p className="mb-4 text-sm text-muted">{checkins} participante(s) com check-in no total.</p>
       {events.length === 0 ? <Empty>Nenhum evento cadastrado.</Empty> : (
-        <Card className="overflow-x-auto p-0"><AttendanceTable events={events} /></Card>
+        <Card className="overflow-x-auto p-0"><AttendanceTable events={events} deletable /></Card>
       )}
     </div>
   );
