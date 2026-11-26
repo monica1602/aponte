@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { ADMIN, brt, login, MAIN, sql, unique } from "./helpers";
+import { adminLogin, brt, login, MAIN, sql, unique } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -35,11 +35,7 @@ test("eventos de mentorados: criar, convidar, aprovacao do admin e inscricao do 
   await expect(carlos.getByText(title)).toHaveCount(0);
 
   const admin = await (await browser.newContext({ baseURL: MAIN })).newPage();
-  await admin.goto("/admin/login");
-  await admin.locator("#admin-user").fill(ADMIN.email);
-  await admin.locator("#admin-pass").fill(ADMIN.password);
-  await admin.locator("button[type=submit]").click();
-  await expect(admin).toHaveURL(/\/admin$/);
+  await adminLogin(admin);
   await admin.goto("/admin/eventos");
   const card = admin.locator("li").filter({ hasText: title });
   await expect(card.getByText("Convidados: Carlos Lima")).toBeVisible();
@@ -76,11 +72,7 @@ test("eventos de mentorados: recusa com motivo", async ({ browser }) => {
   await expect(maria.getByText("Este evento aguarda a aprovacao da administracao.")).toBeVisible();
 
   const admin = await (await browser.newContext({ baseURL: MAIN })).newPage();
-  await admin.goto("/admin/login");
-  await admin.locator("#admin-user").fill(ADMIN.email);
-  await admin.locator("#admin-pass").fill(ADMIN.password);
-  await admin.locator("button[type=submit]").click();
-  await expect(admin).toHaveURL(/\/admin$/);
+  await adminLogin(admin);
   await admin.goto("/admin/eventos");
   const card = admin.locator("li").filter({ hasText: title });
   await card.locator("input[name=reason]").fill("Faltou a descricao");

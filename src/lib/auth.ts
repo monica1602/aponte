@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
 import { getDb, type User } from "./db";
+import { activeTwoFactor, twoFactorResetOn } from "./admin-2fa";
 
 const COOKIE = "ponte_session";
 const TTL_MS = 1000 * 60 * 60 * 24 * 30;
@@ -114,7 +115,42 @@ export async function isAdmin(): Promise<boolean> {
   if (!exp || !sig || Number(exp) < Date.now()) return false;
   const expected = adminSig(exp, secret);
   const got = Buffer.from(sig, "hex");
+  if (got.length !== expected.length || !crypto.timingSafeEqual(got, expected)) return false;
+  return twoFactorResetOn() || !!(await activeTwoFactor());
+}
+
+const ADMIN_SETUP_COOKIE = "ponte_admin_setup";
+const ADMIN_SETUP_TTL_S = 60 * 15;
+
+/** Senha certa, mas os dois fatores ainda nao foram ativados: so a tela de Seguranca abre. */
+export async function createAdminSetup() {
+  const exp = String(Date.now() + ADMIN_SETUP_TTL_S * 1000);
+  const sig = adminSig(`setup:${exp}`, process.env.ADMIN_PASSWORD ?? "").toString("hex");
+  (await cookies()).set(ADMIN_SETUP_COOKIE, `${exp}.${sig}`, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/admin",
+    maxAge: ADMIN_SETUP_TTL_S,
+    secure: process.env.NODE_ENV === "production",
+  });
+}
+
+export async function hasAdminSetup(): Promise<boolean> {
+  const secret = process.env.ADMIN_PASSWORD;
+  if (!secret) return false;
+  const raw = (await cookies()).get(ADMIN_SETUP_COOKIE)?.value;
+  if (!raw) return false;
+  const dot = raw.lastIndexOf(".");
+  const exp = raw.slice(0, dot);
+  const sig = raw.slice(dot + 1);
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  const expected = adminSig(`setup:${exp}`, secret);
+  const got = Buffer.from(sig, "hex");
   return got.length === expected.length && crypto.timingSafeEqual(got, expected);
+}
+
+export async function clearAdminSetup() {
+  (await cookies()).delete({ name: ADMIN_SETUP_COOKIE, path: "/admin" });
 }
 
 export async function destroyAdminSession() {

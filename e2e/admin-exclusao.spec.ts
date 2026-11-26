@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, MAIN, signup, sql, unique } from "./helpers";
+import { adminLogin, MAIN, signup, sql, unique } from "./helpers";
 
 test("admin exclui conta pendente e projeto com conferencia e motivo", async ({ browser }) => {
   const name = unique("Duplicado E2E");
@@ -15,11 +15,7 @@ test("admin exclui conta pendente e projeto com conferencia e motivo", async ({ 
   await expect(stranger).toHaveURL(/\/admin\/login/);
 
   const admin = await (await browser.newContext({ baseURL: MAIN })).newPage();
-  await admin.goto("/admin/login");
-  await admin.locator("#admin-user").fill(ADMIN.email);
-  await admin.locator("#admin-pass").fill(ADMIN.password);
-  await admin.locator("button[type=submit]").click();
-  await expect(admin).toHaveURL(/\/admin$/);
+  await adminLogin(admin);
 
   await admin.goto(`/admin/usuarios/${id}`);
   await admin.getByRole("link", { name: "Excluir conta" }).click();

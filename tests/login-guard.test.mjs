@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 if (!process.env.DATABASE_URL) process.env.DATABASE_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "ponte-lg-")), "test.db");
-const { loginLimits, secondsToWait, progressiveWait, clearLoginAttempts, claimOwnerWarning, passwordMatches } = await import("../src/lib/login-guard.ts");
+const { loginLimits, secondsToWait, progressiveWait, clearLoginAttempts, claimOwnerWarning, passwordMatches, adminLoginLimits, sameSecret } = await import("../src/lib/login-guard.ts");
 const { blockedFor, recordAttempt } = await import("../src/lib/rate-limit.ts");
 const { getDb, hashPassword } = await import("../src/lib/db.ts");
 
@@ -65,4 +65,25 @@ test("login confere a senha mesmo sem conta: o tempo fica parecido nos 2 casos",
   const existe = time(() => passwordMatches("Errada@2026", stored));
   const naoExiste = time(() => passwordMatches("Errada@2026", undefined));
   assert.ok(naoExiste > existe * 0.5 && naoExiste < existe * 2, `existe=${existe} naoExiste=${naoExiste}`);
+});
+
+test("admin: 5 erros por IP e o 21o erro na mesma hora, somando varios IPs, e recusado", async () => {
+  await getDb().prepare("DELETE FROM auth_attempts").run();
+  const failAdmin = (ip) => { const l = adminLoginLimits(ip); return recordAttempt("admin_login", [l.ip.subject, l.site.subject]); };
+  for (let i = 0; i < 5; i++) await failAdmin("7.7.7.7");
+  const one = adminLoginLimits("7.7.7.7");
+  assert.ok((await blockedFor([one.ip, one.site])) > 0);
+  assert.equal(await blockedFor([adminLoginLimits("8.8.8.8").ip, adminLoginLimits("8.8.8.8").site]), 0);
+  for (let i = 0; i < 15; i++) await failAdmin(`20.0.0.${i}`);
+  const fresh = adminLoginLimits("30.0.0.1");
+  assert.equal(await blockedFor([fresh.ip]), 0);
+  assert.ok((await blockedFor([fresh.ip, fresh.site])) > 50);
+});
+
+test("admin: comparacao da senha e segura e tem o mesmo resultado que a comparacao simples", () => {
+  assert.equal(sameSecret("Admin@2026", "Admin@2026"), true);
+  assert.equal(sameSecret("Admin@2025", "Admin@2026"), false);
+  assert.equal(sameSecret("Admin", "Admin@2026"), false);
+  assert.equal(sameSecret("", "Admin@2026"), false);
+  assert.equal(sameSecret("", ""), true);
 });

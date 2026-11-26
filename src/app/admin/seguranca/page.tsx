@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import QRCode from "qrcode";
 import { disableAdminTwoFactor, dismissRecoveryCodes, enableAdminTwoFactor } from "@/lib/actions";
 import { activeTwoFactor, pendingTwoFactor, recoveryCodesLeft, twoFactorResetOn } from "@/lib/admin-2fa";
-import { isAdmin } from "@/lib/auth";
+import { hasAdminSetup, isAdmin } from "@/lib/auth";
 import { otpauthUri } from "@/lib/totp";
 import { AdminNav } from "@/components/admin-nav";
 import { Card, Flash, inputCls, btnCls, btnSecondaryCls } from "@/components/ui";
@@ -15,10 +15,11 @@ export default async function AdminSecurityPage({
 }: {
   searchParams: Promise<{ msg?: string; error?: string }>;
 }) {
-  if (!(await isAdmin())) redirect("/admin/login");
-  const sp = await searchParams;
+  const full = await isAdmin();
   const active = await activeTwoFactor();
   const reset = twoFactorResetOn();
+  if (!full && (active || reset || !(await hasAdminSetup()))) redirect("/admin/login");
+  const sp = await searchParams;
   const codes = (await cookies()).get("ponte_admin_recovery")?.value?.split(",") ?? [];
   const codeField = (
     <div>
@@ -50,9 +51,10 @@ export default async function AdminSecurityPage({
         <p className="mt-1 text-sm text-muted">
           O login da administracao pede o codigo do aplicativo depois da senha. Codigos de recuperacao ainda nao usados: {await recoveryCodesLeft()}.
         </p>
+        <p className="mt-2 text-sm text-muted">Trocou de celular? Digite o codigo atual para desligar o aplicativo antigo. Em seguida aparece um novo QR code, e o painel so abre de novo depois de le-lo.</p>
         <form action={disableAdminTwoFactor} className="mt-4 space-y-3">
           {codeField}
-          <button className={btnSecondaryCls}>Desligar dois fatores</button>
+          <button className={btnSecondaryCls}>Trocar o aplicativo</button>
         </form>
       </Card>
     );
@@ -91,8 +93,9 @@ export default async function AdminSecurityPage({
 
   return (
     <div className="py-8">
-      <AdminNav current="/admin/seguranca" />
+      {full && <AdminNav current="/admin/seguranca" />}
       <h1 className="mb-6 text-2xl font-bold">Seguranca</h1>
+      {!full && <p className="mb-4 max-w-lg text-sm text-amber-200/80">Os dois fatores sao obrigatorios. Ative-os para abrir o painel da administracao.</p>}
       <Flash params={sp} />
       <div className="max-w-lg">{body}</div>
     </div>

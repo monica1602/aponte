@@ -7,13 +7,16 @@ import crypto from "node:crypto";
 import { audit, getDb, getProfile, hashPassword, notify, saveProfile, verifyPassword, type User } from "./db";
 import {
   clearAdminPending,
+  clearAdminSetup,
   createAdminPending,
   createAdminSession,
+  createAdminSetup,
   createSession,
   destroyAdminSession,
   destroySession,
   getSessionUser,
   hasAdminPending,
+  hasAdminSetup,
   isAdmin,
 } from "./auth";
 import { activeTwoFactor, checkSecondFactor, disableTwoFactor, enableTwoFactor, twoFactorResetOn } from "./admin-2fa";
@@ -22,7 +25,7 @@ import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
 import { bareUrl } from "./url";
 import { checkInWindow, checkOutOpen, eventEnded, eventStarted, spTime } from "./event-time";
-import { claimOwnerWarning, clearLoginAttempts, loginLimits, passwordMatches, progressiveWait, waitSecondsMessage } from "./login-guard";
+import { adminLoginLimits, claimOwnerWarning, clearLoginAttempts, loginLimits, passwordMatches, progressiveWait, sameSecret, waitSecondsMessage } from "./login-guard";
 import { looksLikeBot, signupAlertText, SIGNUP_SITE_LIMIT } from "./signup-guard";
 import { blockedFor, recordAttempt, tooManyMessage } from "./rate-limit";
 import { clientIp, requireVerified, safeReturn, siteUrl } from "./session";
@@ -103,17 +106,16 @@ export async function adminLogin(formData: FormData) {
   const email = str(formData, "email").toLowerCase();
   const password = str(formData, "password");
   const ip = await clientIp();
-  const adminLimit = [{ action: "admin_login", subject: `ip:${ip}`, max: 5, windowMin: 15 }];
-  const wait = await blockedFor(adminLimit);
+  const limits = adminLoginLimits(ip);
+  const wait = await blockedFor([limits.ip, limits.site]);
   if (wait) back("/admin/login", "error", tooManyMessage(wait));
   const expected = process.env.ADMIN_PASSWORD;
-  const ok =
-    !!expected &&
-    email === (process.env.ADMIN_EMAIL ?? "").toLowerCase() &&
-    password === expected;
-  if (!ok) {
-    await recordAttempt("admin_login", [`ip:${ip}`]);
-    if (await blockedFor(adminLimit)) await alertAdmin("Login da administracao bloqueado por 15 minutos depois de 5 tentativas erradas");
+  const emailOk = sameSecret(email, (process.env.ADMIN_EMAIL ?? "").toLowerCase());
+  const passwordOk = sameSecret(password, expected ?? "");
+  if (!expected || !emailOk || !passwordOk) {
+    await recordAttempt("admin_login", [limits.ip.subject, limits.site.subject]);
+    if (await blockedFor([limits.site])) await alertAdmin("Login da administracao bloqueado por 1 hora depois de 20 tentativas erradas vindas de varios IPs");
+    else if (await blockedFor([limits.ip])) await alertAdmin("Login da administracao bloqueado por 15 minutos depois de 5 tentativas erradas");
     back("/admin/login", "error", "Credenciais invalidas.");
   }
   if (twoFactorResetOn()) {
@@ -125,6 +127,9 @@ export async function adminLogin(formData: FormData) {
   } else if (await activeTwoFactor()) {
     await createAdminPending();
     redirect("/admin/login/codigo");
+  } else {
+    await createAdminSetup();
+    redirect("/admin/seguranca");
   }
   await createAdminSession();
   redirect("/admin");
@@ -151,11 +156,13 @@ export async function adminVerifyCode(formData: FormData) {
 const RECOVERY_COOKIE = "ponte_admin_recovery";
 
 export async function enableAdminTwoFactor(formData: FormData) {
-  if (!(await isAdmin())) redirect("/admin/login");
+  if (!(await isAdmin()) && !(await hasAdminSetup())) redirect("/admin/login");
   if (twoFactorResetOn()) back("/admin/seguranca", "error", "Remova ADMIN_2FA_RESET da Vercel antes de ativar.");
   const codes = await enableTwoFactor(str(formData, "code").replace(/\s/g, ""));
   if (!codes) back("/admin/seguranca", "error", "Codigo invalido. Confira o codigo atual no aplicativo e tente de novo.");
   await audit(null, "admin.2fa_enabled", "admin", null);
+  await clearAdminSetup();
+  await createAdminSession();
   (await cookies()).set(RECOVERY_COOKIE, codes.join(","), {
     httpOnly: true,
     sameSite: "lax",
@@ -179,7 +186,9 @@ export async function disableAdminTwoFactor(formData: FormData) {
   }
   await disableTwoFactor();
   await audit(null, "admin.2fa_disabled", "admin", null);
-  back("/admin/seguranca", "msg", "Dois fatores desligados. O login da administracao volta a pedir so e-mail e senha.");
+  await destroyAdminSession();
+  await createAdminSetup();
+  back("/admin/seguranca", "msg", "Aplicativo antigo desligado. Leia o novo QR code para voltar ao painel.");
 }
 
 export async function adminLogout() {

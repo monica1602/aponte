@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import pg from "pg";
 import { expect, type Page } from "@playwright/test";
+import { base32Decode, currentStep, totpAt } from "../src/lib/totp";
 
 export const MAIN = "http://localhost:3100";
 export const APROV = "http://localhost:3101";
@@ -118,4 +119,38 @@ export async function expectFitsMobile(page: Page, url?: string) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect.soft(overflow, `rolagem lateral em ${page.url()}`).toBeLessThanOrEqual(0);
   if (size) await page.setViewportSize(size);
+}
+
+/** Codigo do aplicativo para um passo de 30 s ainda nao usado (o site recusa repetir o mesmo passo). */
+export async function totpCode(secret: string, lastStep = 0): Promise<string> {
+  const step = Math.max(currentStep(), lastStep + 1);
+  const waitMs = (step - 1) * 30_000 - Date.now();
+  if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs + 500));
+  return totpAt(base32Decode(secret), step);
+}
+
+/** Login do admin com os dois fatores obrigatorios: ativa no primeiro acesso e depois usa o codigo. */
+export async function adminLogin(page: Page, server: "main" | "aprov" = "main") {
+  await page.goto("/admin/login");
+  await page.locator("#admin-user").fill(ADMIN.email);
+  await page.locator("#admin-pass").fill(ADMIN.password);
+  await page.locator("button[type=submit]").click();
+  await page.waitForURL(/\/admin\/(login\/codigo|seguranca)/);
+  if (page.url().includes("/seguranca")) {
+    const secret = ((await page.locator("span.font-mono").first().textContent()) ?? "").replace(/\s/g, "");
+    await page.locator("#code").fill(await totpCode(secret));
+    await page.getByRole("button", { name: "Ativar" }).click();
+    await page.getByRole("button", { name: "Ja guardei os codigos" }).click();
+    await expect(page.getByRole("button", { name: "Ja guardei os codigos" })).toBeHidden();
+  } else {
+    const [row] = await sql<{ secret: string; last_step: number }>(
+      server,
+      "SELECT secret, last_step FROM admin_2fa WHERE enabled_at IS NOT NULL AND disabled_at IS NULL ORDER BY id DESC LIMIT 1",
+    );
+    await page.locator("#admin-code").fill(await totpCode(row.secret, Number(row.last_step)));
+    await page.getByRole("button", { name: "Entrar" }).click();
+    await page.waitForURL(/\/admin$/);
+  }
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/admin$/);
 }

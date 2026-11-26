@@ -186,7 +186,17 @@ ADMIN_EMAIL=admin@seudominio.com
 ADMIN_PASSWORD=uma-senha-longa-unica-e-privada
 ```
 
-Depois, entre em `/admin` com esse email e essa senha. **Nao coloque os valores
+Depois, entre em `/admin` com esse email e essa senha. Os dois fatores sao
+obrigatorios: no primeiro acesso o site abre **Admin -> Seguranca** para ler o
+QR code num aplicativo de codigos (Google Authenticator, Microsoft
+Authenticator) e guardar os codigos de recuperacao. O resto do painel so abre
+depois disso, e os acessos seguintes pedem o codigo de 6 digitos. O login do
+admin recusa novas senhas depois de 5 erros do mesmo IP em 15 minutos ou de 20
+erros em 1 hora somando todos os IPs. Emergencia (perdeu o celular e os codigos
+de recuperacao): `ADMIN_2FA_RESET=1` na Vercel libera o painel so com a senha;
+remova a variavel e ative os dois fatores de novo logo depois.
+
+**Nao coloque os valores
 reais no README, no Git, em mensagens de grupo ou no site publico.** Na Vercel,
 as variaveis de ambiente ficam protegidas no projeto e devem ser configuradas
 para Preview e Production.

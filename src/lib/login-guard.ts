@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { getDb, hashPassword, verifyPassword } from "./db";
 import type { Limit } from "./rate-limit";
 
@@ -62,4 +63,19 @@ export function passwordMatches(password: string, stored: string | undefined): b
   missingUserHash ??= hashPassword(crypto.randomUUID());
   verifyPassword(password, missingUserHash);
   return false;
+}
+
+/** Login do admin: 5 erros por IP em 15 minutos e 20 erros por hora somando todos os IPs. */
+export function adminLoginLimits(ip: string): { ip: Limit; site: Limit } {
+  return {
+    ip: { action: "admin_login", subject: `ip:${ip}`, max: 5, windowMin: 15 },
+    site: { action: "admin_login", subject: "site", max: 20, windowMin: 60 },
+  };
+}
+
+/** Compara textos sempre no mesmo tempo, esteja o texto certo ou errado. */
+export function sameSecret(given: string, expected: string): boolean {
+  const a = crypto.createHash("sha256").update(given).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(a, b);
 }
