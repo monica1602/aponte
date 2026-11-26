@@ -7,6 +7,8 @@ import { getDb, type PlatformEvent } from "@/lib/db";
 import { updateEvent } from "@/lib/actions";
 import { EVENT_CATEGORIES, MENTEE_EVENT_CATEGORIES } from "@/lib/catalog";
 import { eventEnded } from "@/lib/event-time";
+import { priceInput } from "@/lib/event-price";
+import { EventPricingFields } from "@/components/event-pricing-fields";
 import { Card, Flash, PageHeader, btnSecondaryCls, inputCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +36,7 @@ export default async function EditarEventoPage({ params, searchParams }: {
       </PageHeader>
       <Flash params={sp} />
       <Card>
-        <p className="text-xs text-muted">Se mudar data, horario, modalidade, link ou local, as pessoas inscritas recebem um aviso.</p>
+        <p className="text-xs text-muted">Se mudar data, horario, modalidade, link, local ou valor, as pessoas inscritas recebem um aviso.</p>
         <form action={updateEvent} className="mt-3 space-y-3">
           <input type="hidden" name="event_id" value={e.id} />
           <input name="title" required defaultValue={e.title} placeholder="Nome do evento" aria-label="Nome do evento" className={inputCls} />
@@ -63,6 +65,7 @@ export default async function EditarEventoPage({ params, searchParams }: {
           <select name="certificate_theme" aria-label="Modelo do certificado" className={inputCls} defaultValue={validCertificateTheme(e.certificate_theme)}>
             {CERTIFICATE_THEMES.map((t) => <option key={t.id} value={t.id}>Certificado: {t.label}</option>)}
           </select>
+          <EventPricingFields price={priceInput(e.price_cents)} paymentUrl={e.payment_url} paymentInfo={e.payment_info} />
           <label className="flex items-center gap-2 text-xs text-muted"><input name="require_approval" type="checkbox" defaultChecked={!!e.require_approval} /> Aprovar inscricoes manualmente</label>
           <button className={btnSecondaryCls}>Salvar alteracoes</button>
         </form>

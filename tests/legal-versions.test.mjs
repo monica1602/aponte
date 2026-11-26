@@ -13,7 +13,8 @@ test("cada documento tem versoes em ordem, sem numero repetido", () => {
 
 test("versao pedida, inexistente ou vazia", () => {
   assert.equal(resolveVersion("terms", "1").version.version, 1);
-  assert.equal(resolveVersion("terms", "1").isCurrent, true);
+  assert.equal(resolveVersion("terms", "1").isCurrent, false);
+  assert.equal(resolveVersion("terms", "2").isCurrent, true);
   assert.equal(resolveVersion("terms", "9").version.version, currentVersion("terms").version);
   assert.equal(resolveVersion("privacy", undefined).isCurrent, true);
   assert.equal(resolveVersion("conduct", ["abc"]).version.version, currentVersion("conduct").version);

@@ -1,4 +1,5 @@
 import { externalHref } from "@/lib/url";
+import { formatPrice } from "@/lib/event-price";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -54,6 +55,8 @@ export default async function EventoPage({
   const full = e.capacity !== null && e.approved >= e.capacity;
   const ret = `/eventos/${e.id}`;
   const showLink = e.online_url && registration === "approved" && !cancelledEvent;
+  const paid = Number(e.price_cents) > 0;
+  const showPayment = paid && !cancelledEvent && (user?.id === e.owner_id || !!registration) && !!(e.payment_url || e.payment_info);
 
   const isOrganizer = user?.id === e.owner_id;
   const materials = isOrganizer || reg?.status === "approved" ? await listAttachments({ scope: "event_material", eventId: e.id }) : null;
@@ -86,8 +89,17 @@ export default async function EventoPage({
           {e.modality !== "in_person" && <span className="block text-xs text-muted">{showLink ? <a href={externalHref(e.online_url)} className="text-accent underline" target="_blank" rel="noreferrer">Link do encontro</a> : "O link online e liberado para inscricoes confirmadas."}</span>}
         </dd></Card>
         <Card><dt className="text-xs text-muted">Vagas</dt><dd className="mt-1 text-sm">{e.capacity ? `${e.approved}/${e.capacity} confirmadas` : "Sem limite"}</dd></Card>
+        <Card><dt className="text-xs text-muted">Valor</dt><dd className="mt-1 text-sm">{paid ? formatPrice(e.price_cents) : "Gratuito"}{paid && <span className="block text-xs text-muted">O pagamento e feito direto com o organizador. A Ponte nao recebe nem devolve valores.</span>}</dd></Card>
         <Card><dt className="text-xs text-muted">Inscricao</dt><dd className="mt-1 text-sm">{e.require_approval ? "Sujeita a aprovacao do organizador" : "Confirmacao automatica"}</dd></Card>
       </dl>
+      {showPayment && (
+        <Card className="mt-6">
+          <h2 className="font-semibold">Pagamento</h2>
+          <p className="mt-1 text-xs text-muted">{user?.id === e.owner_id ? "So quem pediu inscricao ve este quadro." : "Pague direto ao organizador. Sua inscricao e confirmada depois que ele conferir o pagamento."}</p>
+          {e.payment_info && <p className="mt-3 whitespace-pre-line text-sm [overflow-wrap:anywhere]">{e.payment_info}</p>}
+          {e.payment_url && <a href={externalHref(e.payment_url)} target="_blank" rel="noopener noreferrer" className={`${btnCls} mt-3`}>Pagar no site do organizador</a>}
+        </Card>
+      )}
       {e.description && <p className="mt-6 whitespace-pre-line leading-relaxed text-fg/85">{e.description}</p>}
       {canInvite && <EventInvites eventId={e.id} ownerId={e.owner_id} q={sp.q ?? ""} />}
       {user?.id === e.owner_id && !cancelledEvent && !rejected && !eventEnded(e.ends_at) && <Link href={`/meus-eventos/${e.id}/editar`} className={`${btnSecondaryCls} mt-8`}>Editar evento</Link>}
@@ -161,6 +173,7 @@ export default async function EventoPage({
             <label className="flex items-start gap-2 text-sm text-muted"><input name="lgpd" type="checkbox" required className="mt-1" />Li o <Link href="/privacidade" className="text-accent underline">aviso de privacidade</Link> e autorizo o uso dos meus dados para gerir esta inscricao.</label>
             <label className="flex items-start gap-2 text-sm text-muted"><input name="communications" type="checkbox" className="mt-1" />Quero receber comunicacoes sobre eventos (opcional).</label>
             <label className="flex items-start gap-2 text-sm text-muted"><input name="image" type="checkbox" className="mt-1" />Autorizo uso de imagem deste evento (opcional).</label>
+            {paid && <label className="flex items-start gap-2 text-sm text-muted"><input name="paid_ack" type="checkbox" required className="mt-1" />Entendi que o pagamento e feito direto com o organizador, fora da Ponte, e que minha inscricao so e confirmada depois que ele conferir o pagamento.</label>}
             <button className={btnCls}>{full ? "Entrar na lista de espera" : "Solicitar inscricao"}</button>
           </form>
         )}

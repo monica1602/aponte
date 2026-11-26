@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EventPricingFields } from "@/components/event-pricing-fields";
 import { TASK_STATUS, brDay, myOpenTasks } from "@/lib/project-tasks";
 import { personalImpact } from "@/lib/impact";
 import { ImpactGrid } from "@/components/impact";
@@ -140,6 +141,7 @@ function EventCreator({ mentee = false }: { mentee?: boolean }) {
         <select name="certificate_theme" aria-label="Modelo do certificado" className={inputCls} defaultValue={DEFAULT_CERTIFICATE_THEME}>
           {CERTIFICATE_THEMES.map((t) => <option key={t.id} value={t.id}>Certificado: {t.label}</option>)}
         </select>
+        <EventPricingFields />
         <label className="flex items-center gap-2 text-xs text-muted"><input name="require_approval" type="checkbox" /> Aprovar inscricoes manualmente</label>
         <button className={btnSecondaryCls}>{mentee ? "Enviar para aprovacao" : "Publicar evento"}</button>
       </form>

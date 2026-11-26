@@ -21,6 +21,7 @@ import {
 } from "./auth";
 import { activeTwoFactor, checkSecondFactor, disableTwoFactor, enableTwoFactor, twoFactorResetOn } from "./admin-2fa";
 import { closeAllAdminSessions } from "./admin-sessions";
+import { PAYMENT_INFO_MAX, PRICE_MAX_CENTS, PRICE_MIN_CENTS, parsePrice } from "./event-price";
 import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
@@ -821,18 +822,20 @@ export async function createEvent(formData: FormData) {
   if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) {
     back("/dashboard", "error", "A capacidade deve ser um numero inteiro maior que zero.");
   }
+  const pricing = pricingFields(formData, "/dashboard");
 
   const result = await getDb()
     .prepare(
-      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer, certificate_theme, status, approval_status, website_url)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer, certificate_theme, status, approval_status, website_url, price_cents, payment_url, payment_info)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       user.id, title, str(formData, "description"), modality, startsAt, endsAt,
-      onlineUrl, location, capacity, formData.get("require_approval") === "on" ? 1 : 0,
+      onlineUrl, location, capacity, pricing.priceCents > 0 || formData.get("require_approval") === "on" ? 1 : 0,
       str(formData, "category"), str(formData, "city"), str(formData, "state").toUpperCase().slice(0, 2),
       str(formData, "organizer") || user.name, validCertificateTheme(str(formData, "certificate_theme")),
-      mentee ? "draft" : "published", mentee ? "pending" : "approved", websiteUrl
+      mentee ? "draft" : "published", mentee ? "pending" : "approved", websiteUrl,
+      pricing.priceCents, pricing.paymentUrl, pricing.paymentInfo
     );
   const eventId = Number(result.lastInsertRowid);
   await audit(user.id, "event.created", "event", eventId);
@@ -843,9 +846,24 @@ export async function createEvent(formData: FormData) {
   back("/dashboard", "msg", "Evento publicado e pronto para receber inscricoes.");
 }
 
+function pricingFields(formData: FormData, ret: string): { priceCents: number; paymentUrl: string; paymentInfo: string } {
+  if (str(formData, "pricing") !== "paid") return { priceCents: 0, paymentUrl: "", paymentInfo: "" };
+  const priceCents = parsePrice(str(formData, "price"));
+  if (priceCents === null || priceCents < PRICE_MIN_CENTS || priceCents > PRICE_MAX_CENTS) {
+    back(ret, "error", "Valor do evento: informe um valor entre R$ 1,00 e R$ 5.000,00, por exemplo 50,00");
+  }
+  const paymentUrl = bareUrl(str(formData, "payment_url"));
+  if (paymentUrl && (paymentUrl.length > WEBSITE_MAX || !LINK_RE.test(paymentUrl))) {
+    back(ret, "error", "Link de pagamento: informe um endereco valido, por exemplo sympla.com.br/meu-evento");
+  }
+  const paymentInfo = str(formData, "payment_info");
+  if (paymentInfo.length > PAYMENT_INFO_MAX) back(ret, "error", `Instrucoes de pagamento: use no maximo ${PAYMENT_INFO_MAX} caracteres.`);
+  return { priceCents, paymentUrl, paymentInfo };
+}
+
 type EditableEvent = {
   id: number; title: string; owner_id: number; status: string; approval_status: string; modality: string; starts_at: string; ends_at: string;
-  online_url: string; location: string; city: string; state: string;
+  online_url: string; location: string; city: string; state: string; price_cents: number;
 };
 
 export async function updateEvent(formData: FormData) {
@@ -854,7 +872,7 @@ export async function updateEvent(formData: FormData) {
   const ret = `/meus-eventos/${Number.isInteger(id) && id > 0 ? id : 0}/editar`;
   const db = getDb();
   const event = (await db.prepare(
-    "SELECT id, title, owner_id, status, approval_status, modality, starts_at, ends_at, online_url, location, city, state FROM events WHERE id = ? AND owner_id = ?"
+    "SELECT id, title, owner_id, status, approval_status, modality, starts_at, ends_at, online_url, location, city, state, price_cents FROM events WHERE id = ? AND owner_id = ?"
   ).get(id, user.id)) as EditableEvent | undefined;
   if (!event) back("/meus-eventos", "error", "Evento nao encontrado ou voce nao e quem o cadastrou.");
   if (event.status === "cancelled") back("/meus-eventos", "error", "Evento cancelado nao pode ser editado.");
@@ -889,6 +907,7 @@ export async function updateEvent(formData: FormData) {
   if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) {
     back(ret, "error", "A capacidade deve ser um numero inteiro maior que zero.");
   }
+  const pricing = pricingFields(formData, ret);
   const approved = (await db.prepare("SELECT COUNT(*) AS count FROM event_registrations WHERE event_id = ? AND status = 'approved'").get(id)) as { count: number };
   if (capacity !== null && capacity < Number(approved.count)) {
     back(ret, "error", `O evento ja tem ${approved.count} inscricoes confirmadas. As vagas nao podem ficar abaixo disso.`);
@@ -896,10 +915,12 @@ export async function updateEvent(formData: FormData) {
 
   await db.prepare(
     `UPDATE events SET title = ?, description = ?, modality = ?, starts_at = ?, ends_at = ?, online_url = ?, location = ?, capacity = ?,
-       require_approval = ?, category = ?, city = ?, state = ?, certificate_theme = ?, website_url = ? WHERE id = ? AND owner_id = ?`
+       require_approval = ?, category = ?, city = ?, state = ?, certificate_theme = ?, website_url = ?,
+       price_cents = ?, payment_url = ?, payment_info = ? WHERE id = ? AND owner_id = ?`
   ).run(
     title, str(formData, "description"), modality, startsAt, endsAt, onlineUrl, location, capacity,
-    formData.get("require_approval") === "on" ? 1 : 0, str(formData, "category"), city, state, validCertificateTheme(str(formData, "certificate_theme")), websiteUrl, id, user.id
+    pricing.priceCents > 0 || formData.get("require_approval") === "on" ? 1 : 0, str(formData, "category"), city, state, validCertificateTheme(str(formData, "certificate_theme")), websiteUrl,
+    pricing.priceCents, pricing.paymentUrl, pricing.paymentInfo, id, user.id
   );
   await audit(user.id, "event.updated", "event", id);
 
@@ -908,6 +929,7 @@ export async function updateEvent(formData: FormData) {
   if (event.modality !== modality) changes.push("modalidade");
   if (event.online_url !== onlineUrl) changes.push("link");
   if (event.location !== location || event.city !== city || event.state !== state) changes.push("local");
+  if (Number(event.price_cents) !== pricing.priceCents) changes.push("valor");
   if (changes.length) {
     const people = (await db.prepare(
       "SELECT user_id FROM event_registrations WHERE event_id = ? AND status IN ('requested','approved','waitlist')"
@@ -1019,18 +1041,22 @@ export async function requestEventAccess(formData: FormData) {
   const db = getDb();
   const event = await db
     .prepare("SELECT * FROM events WHERE id = ? AND status = 'published'")
-    .get(eventId) as { id: number; owner_id: number; capacity: number | null; require_approval: number } | undefined;
+    .get(eventId) as { id: number; owner_id: number; capacity: number | null; require_approval: number; price_cents: number } | undefined;
   if (!event) back(ret, "error", "Evento nao encontrado ou indisponivel.");
   if (event!.owner_id === user.id) back(ret, "error", "Voce nao pode se inscrever no proprio evento.");
   if (formData.get("lgpd") !== "on") {
     back(ret, "error", "Para se inscrever, confirme que leu o aviso de privacidade do evento.");
+  }
+  const paid = Number(event!.price_cents) > 0;
+  if (paid && formData.get("paid_ack") !== "on") {
+    back(ret, "error", "Evento pago: confirme que entendeu que o pagamento e feito direto com o organizador.");
   }
   const filled = await db
     .prepare("SELECT COUNT(*) AS count FROM event_registrations WHERE event_id = ? AND status IN ('requested','approved')")
     .get(eventId) as { count: number };
   const status = event!.capacity !== null && filled.count >= event!.capacity
     ? "waitlist"
-    : event!.require_approval
+    : event!.require_approval || paid
       ? "requested"
       : "approved";
   const communications = formData.get("communications") === "on";
@@ -1071,7 +1097,9 @@ export async function requestEventAccess(formData: FormData) {
   }
   const messages: Record<string, string> = {
     approved: "Inscricao confirmada.",
-    requested: "Solicitacao enviada para aprovacao do organizador.",
+    requested: paid
+      ? "Solicitacao enviada. Faca o pagamento como indicado na pagina do evento: o organizador confirma a inscricao depois de conferir."
+      : "Solicitacao enviada para aprovacao do organizador.",
     waitlist: "Evento lotado. Voce entrou na lista de espera.",
   };
   back(ret, "msg", messages[status]);

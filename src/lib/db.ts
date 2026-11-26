@@ -91,6 +91,9 @@ export interface PlatformEvent {
   approval_status: string;
   approval_note: string;
   website_url: string;
+  price_cents: number;
+  payment_url: string;
+  payment_info: string;
   created_at: string;
 }
 
@@ -719,6 +722,9 @@ async function ensureMigrations(db: Db) {
     approval_status: "TEXT NOT NULL DEFAULT 'approved'",
     approval_note: "TEXT NOT NULL DEFAULT ''",
     website_url: "TEXT NOT NULL DEFAULT ''",
+    price_cents: "INTEGER NOT NULL DEFAULT 0",
+    payment_url: "TEXT NOT NULL DEFAULT ''",
+    payment_info: "TEXT NOT NULL DEFAULT ''",
   });
   await addColumns(db, "reports", { sensitive: "INTEGER NOT NULL DEFAULT 0" });
   await addColumns(db, "certificates", {

@@ -19,6 +19,12 @@ const sectionsV1: { title: string; body: ReactNode }[] = [
   { title: "14. Contato", body: "Duvidas e pedidos sobre estes Termos: pelo canal da administracao da Ponte." },
 ];
 
+const sectionsV2 = sectionsV1.map((s) =>
+  s.title === "6. Eventos"
+    ? { ...s, body: "Organizadores sao responsaveis pelas informacoes, vagas, check-in e certificados dos seus eventos. Em eventos presenciais, siga as orientacoes do organizador. A confirmacao \"Cheguei bem em casa\" e voluntaria e nao usa localizacao. Eventos pagos: o valor, a forma de pagamento, a cobranca, a nota ou recibo e a devolucao de valores, inclusive em caso de cancelamento ou desistencia, sao combinados e de responsabilidade do organizador. O pagamento e feito direto com ele, fora da Ponte, que nao recebe, nao intermedeia e nao devolve valores. A inscricao em evento pago so e confirmada quando o organizador aprova, depois de conferir o pagamento." }
+    : s,
+);
+
 function Sections({ items }: { items: { title: string; body: ReactNode }[] }) {
   return (
     <div className="space-y-4 text-sm leading-relaxed text-muted">
@@ -35,6 +41,7 @@ function Sections({ items }: { items: { title: string; body: ReactNode }[] }) {
 /** Texto de cada versao publicada; as versoes antigas nunca mudam. */
 export const TERMS_TEXTS: Record<number, () => ReactNode> = {
   1: () => <Sections items={sectionsV1} />,
+  2: () => <Sections items={sectionsV2} />,
 };
 
 /** Versao em vigor dos Termos, usada na caixa de aceite do cadastro. */

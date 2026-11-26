@@ -9,7 +9,7 @@ export type InviteRow = { user_id: number; name: string; role: string; status: s
 export type InviteOutcome = "ok" | "self" | "not_found" | "full" | "duplicate" | "blocked";
 export type PendingEvent = {
   id: number; title: string; description: string; modality: string; starts_at: string; ends_at: string; category: string;
-  location: string; city: string; state: string; website_url: string; owner_id: number; owner_name: string; invitees: string;
+  location: string; city: string; state: string; website_url: string; price_cents: number; payment_url: string; owner_id: number; owner_name: string; invitees: string;
 };
 
 type Ev = { id: number; title: string; owner_id: number };
@@ -123,7 +123,7 @@ export async function searchInvitees(eventId: number, ownerId: number, q: string
 
 export async function pendingEvents(): Promise<PendingEvent[]> {
   return (await getDb().prepare(
-    `SELECT e.id, e.title, e.description, e.modality, e.starts_at, e.ends_at, e.category, e.location, e.city, e.state, e.website_url, e.owner_id, u.name AS owner_name,
+    `SELECT e.id, e.title, e.description, e.modality, e.starts_at, e.ends_at, e.category, e.location, e.city, e.state, e.website_url, e.price_cents, e.payment_url, e.owner_id, u.name AS owner_name,
        COALESCE((SELECT GROUP_CONCAT(iu.name, ', ') FROM event_invites i JOIN users iu ON iu.id = i.user_id WHERE i.event_id = e.id), '') AS invitees
      FROM events e JOIN users u ON u.id = e.owner_id WHERE e.approval_status = 'pending' AND e.status = 'draft' ORDER BY e.created_at`
   ).all()) as unknown as PendingEvent[];

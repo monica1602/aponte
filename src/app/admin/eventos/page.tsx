@@ -9,6 +9,7 @@ import { Card, Empty, Flash, btnCls, btnSecondaryCls, inputCls } from "@/compone
 import { pendingEvents } from "@/lib/event-invites";
 import { adminApproveEvent, adminRejectEvent } from "@/lib/actions";
 import { externalHref } from "@/lib/url";
+import { formatPrice } from "@/lib/event-price";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Admin — Ponte" };
@@ -31,6 +32,7 @@ export default async function AdminEventsPage({ searchParams }: { searchParams: 
             <p className="mt-1 text-xs text-muted">Por <Link href={`/admin/usuarios/${p.owner_id}`} className="text-accent hover:underline">{p.owner_name}</Link> · {new Date(p.starts_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} ate {new Date(p.ends_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · {p.modality === "in_person" ? "Presencial" : p.modality === "hybrid" ? "Hibrido" : "Online"}{p.location ? ` · ${p.location}${p.city ? `, ${p.city}${p.state ? `/${p.state}` : ""}` : ""}` : ""}</p>
             {p.description && <p className="mt-2 whitespace-pre-line text-sm [overflow-wrap:anywhere]">{p.description}</p>}
             {p.website_url && <p className="mt-2 text-xs text-muted [overflow-wrap:anywhere]">Site oficial: <a href={externalHref(p.website_url)} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">{p.website_url}</a></p>}
+            {Number(p.price_cents) > 0 && <p className="mt-2 text-xs text-muted [overflow-wrap:anywhere]">Evento pago: {formatPrice(p.price_cents)}{p.payment_url && <> · Pagamento: <a href={externalHref(p.payment_url)} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">{p.payment_url}</a></>}</p>}
             <p className="mt-2 text-xs text-muted [overflow-wrap:anywhere]">Convidados: {p.invitees || "ninguem ainda"}</p>
             <div className="mt-3 flex flex-wrap items-start gap-3">
               <form action={adminApproveEvent}><input type="hidden" name="event_id" value={p.id} /><button className={btnCls}>Aprovar</button></form>

@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { requestEventAccess } from "@/lib/actions";
 import { Badge, Card, Empty, Flash, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
 import { ALL_EVENT_CATEGORIES } from "@/lib/catalog";
+import { formatPrice } from "@/lib/event-price";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ type EventRow = {
   category: string;
   city: string;
   state: string;
+  price_cents: number;
 };
 
 const modalityLabel = { online: "Online", in_person: "Presencial", hybrid: "Hibrido" };
@@ -80,7 +82,7 @@ export default async function EventosPage({
         const full = event.capacity !== null && event.approved >= event.capacity;
         return <Card key={event.id} className="flex flex-col">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div><Badge kind={event.modality} label={modalityLabel[event.modality]} />{event.category && <span className="ml-1.5"><Badge kind="projeto" label={event.category} /></span>}<h2 className="mt-2 text-lg font-semibold"><Link href={`/eventos/${event.id}`} className="hover:text-accent">{event.title}</Link></h2></div>
+            <div><Badge kind={event.modality} label={modalityLabel[event.modality]} />{event.category && <span className="ml-1.5"><Badge kind="projeto" label={event.category} /></span>}<span className="ml-1.5"><Badge kind="price" label={Number(event.price_cents) > 0 ? formatPrice(event.price_cents) : "Gratuito"} /></span><h2 className="mt-2 text-lg font-semibold"><Link href={`/eventos/${event.id}`} className="hover:text-accent">{event.title}</Link></h2></div>
             {event.capacity && <span className="text-xs text-muted">{event.approved}/{event.capacity} vagas</span>}
           </div>
           <p className="mt-2 text-sm text-muted">{new Date(event.starts_at).toLocaleString("pt-BR")} — {new Date(event.ends_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
@@ -88,7 +90,7 @@ export default async function EventosPage({
           {event.location && <p className="mt-3 text-xs text-muted"><span aria-hidden="true">📍 </span>{event.location}{event.city ? ` — ${event.city}${event.state ? `/${event.state}` : ""}` : ""}</p>}
           <p className="mt-3 text-xs text-muted">Organizado por {event.owner_name}{event.require_approval ? " · inscricao sujeita a aprovacao" : ""}</p>
           <div className="mt-4 border-t border-line pt-4">
-            {!user ? <Link href="/login" className="text-sm text-accent hover:underline">Entre para solicitar acesso</Link> : event.owner_id === user.id ? <p className="text-xs text-muted">Voce organiza este evento. Gerencie as inscricoes em Meus eventos.</p> : registration ? <Badge kind={registration} label={registration === "approved" ? "Inscricao confirmada" : registration === "requested" ? "Aguardando aprovacao" : "Lista de espera"} /> : <form action={requestEventAccess} className="space-y-2"><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="return" value="/eventos" /><label className="flex items-start gap-2 text-xs text-muted"><input name="lgpd" type="checkbox" required className="mt-0.5" />Li o <Link href="/privacidade" className="text-accent underline">aviso de privacidade</Link> e autorizo o uso dos meus dados para gerir esta inscricao e participacao.</label><label className="flex items-start gap-2 text-xs text-muted"><input name="communications" type="checkbox" className="mt-0.5" />Quero receber comunicacoes sobre eventos (opcional).</label><label className="flex items-start gap-2 text-xs text-muted"><input name="image" type="checkbox" className="mt-0.5" />Autorizo uso de imagem deste evento (opcional).</label><button className={btnCls}>{full ? "Entrar na lista de espera" : "Solicitar acesso"}</button></form>}
+            {!user ? <Link href="/login" className="text-sm text-accent hover:underline">Entre para solicitar acesso</Link> : event.owner_id === user.id ? <p className="text-xs text-muted">Voce organiza este evento. Gerencie as inscricoes em Meus eventos.</p> : registration ? <Badge kind={registration} label={registration === "approved" ? "Inscricao confirmada" : registration === "requested" ? "Aguardando aprovacao" : "Lista de espera"} /> : <form action={requestEventAccess} className="space-y-2"><input type="hidden" name="event_id" value={event.id} /><input type="hidden" name="return" value="/eventos" /><label className="flex items-start gap-2 text-xs text-muted"><input name="lgpd" type="checkbox" required className="mt-0.5" />Li o <Link href="/privacidade" className="text-accent underline">aviso de privacidade</Link> e autorizo o uso dos meus dados para gerir esta inscricao e participacao.</label><label className="flex items-start gap-2 text-xs text-muted"><input name="communications" type="checkbox" className="mt-0.5" />Quero receber comunicacoes sobre eventos (opcional).</label><label className="flex items-start gap-2 text-xs text-muted"><input name="image" type="checkbox" className="mt-0.5" />Autorizo uso de imagem deste evento (opcional).</label>{Number(event.price_cents) > 0 && <label className="flex items-start gap-2 text-xs text-muted"><input name="paid_ack" type="checkbox" required className="mt-0.5" />Entendi que o pagamento e feito direto com o organizador, fora da Ponte, e que minha inscricao so e confirmada depois que ele conferir o pagamento.</label>}<button className={btnCls}>{full ? "Entrar na lista de espera" : "Solicitar acesso"}</button></form>}
           </div>
         </Card>;
       })}</div>}
