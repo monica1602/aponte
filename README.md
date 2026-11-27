@@ -473,6 +473,39 @@ O banco atual nunca e sobrescrito: a copia vai para um banco novo e so depois o 
 
 Atualize `BACKUP_PASSPHRASE`. As copias anteriores continuam abrindo so com a senha antiga ate vencerem (30 dias), entao guarde as duas durante esse periodo.
 
+## Se uma chave vazar
+
+Uma chave vazou quando apareceu no Git, num print, numa mensagem de grupo, num computador emprestado ou em qualquer lugar fora da Vercel e do GitHub. Troque a chave na hora, na ordem abaixo. **Nunca cole o valor novo no README, no Git ou em mensagens.**
+
+Onde ficam:
+- **Vercel:** projeto `aponte` -> **Settings -> Environment Variables**. Para trocar, clique nos 3 pontos da variavel -> **Edit**, cole o valor novo e salve. A variavel so passa a valer numa publicacao nova: **Deployments -> (ultima publicacao) -> Redeploy**, ou um envio para a `main`.
+- **GitHub:** repositorio `monica1602/aponte` -> **Settings -> Secrets and variables -> Actions** -> segredo -> **Update**.
+
+Depois de cada troca, abra https://aponte-eight.vercel.app/api/saude e confira `{"status":"ok","banco":"ok"}`.
+
+| Segredo | Onde gerar o novo | Onde trocar | Ordem e efeito |
+|---|---|---|---|
+| `ADMIN_PASSWORD` | Crie uma senha longa e unica | Vercel | 1. Edite. 2. Redeploy. Todas as sessoes do admin caem; entre com a senha nova e o codigo. |
+| `DATABASE_URL` (senha do banco) | Neon -> projeto -> **Roles** -> role do site -> **Reset password**. Copie o endereco novo em **Connection Details** | Vercel e GitHub (`BACKUP_DATABASE_URL`) | O endereco antigo para de funcionar no reset, entao o site fica sem banco ate o passo 3 (alguns minutos): faca num horario de pouco uso. 1. Reset no Neon. 2. Edite `DATABASE_URL` na Vercel (se a variavel foi criada pela integracao do Neon, confira se ela ja mudou sozinha). 3. Redeploy. 4. Atualize `BACKUP_DATABASE_URL` no GitHub e rode **Actions -> Backup do banco -> Run workflow** para conferir. |
+| `BREVO_API_KEY` | Brevo -> **SMTP & API -> API Keys** -> **Generate a new API key** | Vercel | 1. Gere a nova. 2. Edite e faca o Redeploy. 3. Teste o "Esqueci a senha". 4. So entao apague a chave antiga no Brevo. |
+| `RESEND_API_KEY` | Resend -> **API Keys** -> **Create API Key** | Vercel | Igual ao Brevo: troque, Redeploy, teste e apague a antiga no Resend. |
+| `CERTIFICATE_SIGNING_P12` e `CERTIFICATE_SIGNING_PASSWORD` | Gere um `.p12` novo com os comandos de "Publicar na Vercel" e uma senha nova | Vercel (as 2 juntas) | 1. Edite as 2. 2. Redeploy. 3. Baixe um PDF de certificado e confira a assinatura. Os PDFs ja baixados continuam com a assinatura antiga; o link de validacao continua valendo. |
+| `CRON_SECRET` | Crie um texto aleatorio longo (ex.: `openssl rand -hex 32`) | Vercel | 1. Edite. 2. Redeploy. A Vercel passa a enviar o novo no proximo lembrete diario. |
+| `GOOGLE_CLIENT_SECRET` | Google Cloud Console -> **APIs e servicos -> Credenciais** -> cliente OAuth -> **Adicionar chave secreta** | Vercel | 1. Crie a nova. 2. Edite e faca o Redeploy. 3. Teste "Entrar com Google". 4. Desative a chave antiga no Google. |
+| `CALLMEBOT_API_KEY` | CallMeBot: peca uma chave nova pelo WhatsApp, como no cadastro inicial | Vercel | 1. Edite. 2. Redeploy. Os avisos de WhatsApp ao admin passam a usar a nova. |
+| `BACKUP_DATABASE_URL` | O mesmo endereco novo do banco (linha `DATABASE_URL`) | GitHub | Sempre junto com a troca da senha do banco. |
+| `BACKUP_PASSPHRASE` | Crie uma senha longa | GitHub | Veja "Trocar a senha da criptografia". Guarde a antiga por 30 dias para abrir as copias anteriores. |
+
+Se o vazamento foi do proprio banco (o `DATABASE_URL` completo), troque tambem a `ADMIN_PASSWORD` e, em **Admin -> Seguranca**, use **Trocar o aplicativo** dos dois fatores e **Sair de todos os aparelhos**.
+
+### Conferir a conta da Vercel (a cada 6 meses)
+
+- **Dois fatores ativos:** **Account Settings -> Authentication**.
+- **Codigos de recuperacao** guardados fora do celular (gerenciador de senhas ou papel).
+- **Membros:** em **Settings -> Members** do time, so quem administra a plataforma.
+- **Segundo jeito de entrar:** em **Account Settings -> Authentication**, ligue mais de um metodo (GitHub, Google ou e-mail), para nao perder a conta junto com um deles.
+- **Tokens:** em **Account Settings -> Tokens**, apague os que voce nao reconhece.
+
 ## Monitoramento, logs e disponibilidade
 
 - **Logs estruturados:** as mensagens do servidor saem em 1 linha JSON (`ts`, `nivel`, `area`, `msg` e campos extras), por `src/lib/log.ts`. E-mails, links com query string, credenciais em URLs, tokens e campos como `senha`/`token` sao mascarados antes de gravar. No Vercel, veja em **Logs** e filtre por `"area":"servidor"`, por exemplo.
