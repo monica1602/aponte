@@ -4,6 +4,8 @@ import { TASK_STATUS, brDay, myOpenTasks } from "@/lib/project-tasks";
 import { personalImpact } from "@/lib/impact";
 import { ImpactGrid } from "@/components/impact";
 import { getProfile } from "@/lib/db";
+import { dashboardSuggestions, type Suggestions } from "@/lib/suggestions";
+import { explain } from "@/lib/matching";
 import { eventReviewOpen, mentorSummary } from "@/lib/reviews";
 import { PASSWORD_HINT } from "@/lib/password-policy";
 import { EVENT_CATEGORIES, MENTEE_EVENT_CATEGORIES } from "@/lib/catalog";
@@ -353,6 +355,40 @@ function NetworkList({ rows, title, empty }: { rows: LinkRow[]; title: string; e
   );
 }
 
+function SuggestionsCard({ data, role }: { data: Suggestions; role: string }) {
+  const mentee = role === "mentee";
+  const title = mentee ? "Mentores sugeridos para voce" : "Mentorados sugeridos para voce";
+  const fill = role === "company"
+    ? <>Publique um projeto com ferramentas e areas para receber sugestoes. <Link href="/meus-projetos" className="text-accent hover:underline">Meus projetos</Link></>
+    : <>Complete seu perfil para receber sugestoes. <Link href="/perfil" className="text-accent hover:underline">Completar perfil</Link></>;
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold">{title}</h2>
+        {!data.needsProfile && <Link href={data.searchHref} className="text-xs text-accent hover:underline">Ver todos →</Link>}
+      </div>
+      {data.needsProfile ? (
+        <p className="mt-2 text-sm text-muted">{fill}</p>
+      ) : data.items.length === 0 ? (
+        <div className="mt-2"><Empty>Nenhuma sugestao compativel no momento.</Empty></div>
+      ) : (
+        <ul className="mt-3 space-y-3" aria-label={title}>
+          {data.items.map((s) => (
+            <li key={s.id} className="flex items-start justify-between gap-3 text-sm">
+              <div>
+                <Link href={`/pessoas/${s.id}`} className="font-medium text-fg hover:text-accent">{s.name}</Link>
+                {s.headline && <p className="text-xs text-muted">{s.headline}</p>}
+                <p className="mt-1 text-xs text-muted">{explain(s.name, s.match)}</p>
+              </div>
+              <span className="shrink-0 text-lg font-bold tabular-nums">{s.match.percent}%<span className="sr-only"> de compatibilidade</span></span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -421,6 +457,7 @@ export default async function DashboardPage({
   const impact = await personalImpact(user.id, user.role);
   const showImpact = !!(await getProfile(user.id)).show_impact;
   const reviewSummary = isMentorSide ? await mentorSummary(user.id) : null;
+  const suggestions = await dashboardSuggestions(user);
 
   const myContribs =
     user.role === "mentee"
@@ -470,6 +507,7 @@ export default async function DashboardPage({
           {isMentorSide ? (
             <>
               <PendingRequests rows={incoming} />
+              <SuggestionsCard data={suggestions} role={user.role} />
               {reviewSummary && (
                 <Card>
                   <h2 className="font-semibold">Avaliacoes das suas mentorias</h2>
@@ -527,6 +565,7 @@ export default async function DashboardPage({
                   </ul>
                 </Card>
               )}
+              <SuggestionsCard data={suggestions} role={user.role} />
               <Card className="border-accent/40 bg-accent/5">
                 <h2 className="font-semibold">Encontrar mentores</h2>
                 <p className="mt-1 text-sm text-muted">
