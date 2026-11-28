@@ -45,6 +45,7 @@ export default async function SobrePage() {
       <div className="mt-6 max-w-3xl space-y-4 text-lg leading-relaxed text-muted">
         {ABOUT.map((p) => <p key={p}>{p}</p>)}
       </div>
+      <Link href="/quem-somos" className={`${btnSecondaryCls} mt-8 inline-flex px-6 py-3`}>Conheça quem somos</Link>
 
       <section className="mt-16 grid gap-6 border-t border-line pt-12 md:grid-cols-2">
         <div aria-labelledby="missao" className="rounded-lg border border-line bg-surface p-6">
