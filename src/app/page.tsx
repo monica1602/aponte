@@ -163,6 +163,12 @@ export default async function Home() {
             >
               Explorar mentores
             </Link>
+            <Link
+              href="/sobre"
+              className="inline-flex items-center justify-center rounded-md border border-line px-6 py-3 font-medium text-fg transition-colors hover:border-fg/40 hover:bg-raised"
+            >
+              Conheça a Ponte
+            </Link>
           </div>
         </div>
         <div className="flex justify-center lg:justify-end">

@@ -27,6 +27,7 @@ const NAV = [
   { href: "/projetos", label: "Projetos" },
   { href: "/eventos", label: "Eventos" },
   { href: "/oportunidades", label: "Oportunidades" },
+  { href: "/sobre", label: "Sobre" },
 ];
 
 const OPEN_SOURCE = { href: "/projetos?kind=open_source", label: "Projetos open source" };
@@ -121,7 +122,7 @@ export default async function RootLayout({
                 </svg>
                 Ponte
               </Link>
-              <nav aria-label="Principal" className="hidden items-center gap-6 text-sm text-muted md:flex">
+              <nav aria-label="Principal" className="hidden items-center gap-4 text-sm text-muted md:flex lg:gap-6">
                 {NAV.filter((n) => !(user?.role === "mentor" && n.href === "/mentores")).map((n) => (
                   <Link key={n.href} href={n.href} className="transition-colors hover:text-fg">
                     {n.label}
@@ -238,6 +239,7 @@ export default async function RootLayout({
           <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-5 py-8 text-xs text-muted/70 sm:flex-row">
             <span>Ponte — conecta quem quer aprender com quem pode ensinar.</span>
             <nav aria-label="Rodape" className="flex flex-wrap justify-center gap-x-4 gap-y-1 sm:flex-nowrap">
+              <Link href="/sobre" className="hover:text-fg">Sobre</Link>
               <Link href="/sou-mentor" className="hover:text-fg">Sou Mentor</Link>
               <Link href="/sou-mentorado" className="hover:text-fg">Sou Mentorado</Link>
               <Link href="/sou-empresa" className="hover:text-fg">Sou Empresa</Link>
