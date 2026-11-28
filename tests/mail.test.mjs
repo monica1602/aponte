@@ -37,6 +37,17 @@ test("com BREVO_API_KEY, envia pelo Brevo com o remetente da Ponte", async () =>
   assert.deepEqual(got[0].body, { sender: BREVO_SENDER, to: [{ email: "a@b.com" }], subject: "Oi", htmlContent: "<p>Oi</p>", textContent: "Oi" });
 });
 
+test("replyTo vai como replyTo no Brevo e reply_to no Resend", async () => {
+  setEnv({ BREVO_API_KEY: "kb", BREVO_API_URL: `${base}/brevo` });
+  got.length = 0;
+  await sendMail({ to: "a@b.com", subject: "Oi", html: "x", replyTo: "c@d.com" });
+  assert.deepEqual(got[0].body.replyTo, { email: "c@d.com" });
+  setEnv({ RESEND_API_KEY: "kr", RESEND_API_URL: `${base}/resend` });
+  got.length = 0;
+  await sendMail({ to: "a@b.com", subject: "Oi", html: "x", replyTo: "c@d.com" });
+  assert.equal(got[0].body.reply_to, "c@d.com");
+});
+
 test("sem BREVO_API_KEY, continua pelo Resend", async () => {
   setEnv({ RESEND_API_KEY: "kr", RESEND_API_URL: `${base}/resend` });
   got.length = 0;

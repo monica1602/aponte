@@ -2,7 +2,7 @@
 export const BREVO_SENDER = { name: "Ponte", email: "monica.prupst@yahoo.com.br" };
 
 export type MailProvider = "Brevo" | "Resend";
-export type Mail = { to: string; subject: string; html: string; text?: string };
+export type Mail = { to: string; subject: string; html: string; text?: string; replyTo?: string };
 
 export function mailProvider(): MailProvider | null {
   if (process.env.BREVO_API_KEY) return "Brevo";
@@ -28,6 +28,7 @@ export async function sendMail(m: Mail): Promise<{ ok: boolean; status: number; 
           subject: m.subject,
           htmlContent: m.html,
           ...(m.text ? { textContent: m.text } : {}),
+          ...(m.replyTo ? { replyTo: { email: m.replyTo } } : {}),
         }),
         signal: AbortSignal.timeout(10_000),
       })
@@ -40,6 +41,7 @@ export async function sendMail(m: Mail): Promise<{ ok: boolean; status: number; 
           subject: m.subject,
           html: m.html,
           ...(m.text ? { text: m.text } : {}),
+          ...(m.replyTo ? { reply_to: m.replyTo } : {}),
         }),
         signal: AbortSignal.timeout(10_000),
       });

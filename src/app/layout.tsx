@@ -10,6 +10,8 @@ import { unreadMessageCount } from "@/lib/messages";
 import { Suspense } from "react";
 import { MobileMenuCloser } from "@/components/mobile-menu-closer";
 import { FormKeeper } from "@/components/form-keeper";
+import { InstagramIcon, LinkedinIcon } from "@/components/contact-icons";
+import { CONTACT } from "@/lib/contact";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
@@ -29,6 +31,7 @@ const NAV = [
   { href: "/oportunidades", label: "Oportunidades" },
   { href: "/sobre", label: "Sobre" },
   { href: "/quem-somos", label: "Quem somos" },
+  { href: "/contatos", label: "Contatos" },
 ];
 
 const OPEN_SOURCE = { href: "/projetos?kind=open_source", label: "Projetos open source" };
@@ -237,26 +240,36 @@ export default async function RootLayout({
         </Suspense>
         <main id="conteudo" className="mx-auto max-w-6xl px-5">{children}</main>
         <footer className="mt-24 border-t border-line">
-          <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-5 py-8 text-xs text-muted/70 lg:flex-row">
-            <span>Ponte — conecta quem quer aprender com quem pode ensinar.</span>
-            <nav aria-label="Rodape" className="flex flex-wrap justify-center gap-x-4 gap-y-1 lg:flex-nowrap">
-              <Link href="/sobre" className="hover:text-fg">Sobre</Link>
-              <Link href="/quem-somos" className="hover:text-fg">Quem somos</Link>
-              <Link href="/sou-mentor" className="hover:text-fg">Sou Mentor</Link>
-              <Link href="/sou-mentorado" className="hover:text-fg">Sou Mentorado</Link>
-              <Link href="/sou-empresa" className="hover:text-fg">Sou Empresa</Link>
-              <Link href="/termos" className="hover:text-fg">Termos</Link>
-              <Link href="/privacidade" className="hover:text-fg">Privacidade</Link>
-              <Link href="/conduta" className="hover:text-fg">Conduta</Link>
-            </nav>
-            <div className="flex items-center gap-4">
-              {process.env.VERCEL_ENV !== "production" && <span>Contas de demo: ana@ponte.dev / Ponte@2026</span>}
-              <Link
-                href="/admin/login"
-                className="rounded-md border border-line px-3 py-1.5 text-muted hover:border-accent hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                Administracao
-              </Link>
+          <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-8 text-xs text-muted/70">
+            <div className="flex flex-col items-center justify-between gap-3 lg:flex-row">
+              <span className="text-center">Ponte — conecta quem quer aprender com quem pode ensinar.</span>
+              <nav aria-label="Redes" className="flex items-center gap-3">
+                <a href={`mailto:${CONTACT.email}`} className="hover:text-fg">{CONTACT.email}</a>
+                <a href={CONTACT.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram da Ponte" className="hover:text-fg"><InstagramIcon /></a>
+                <a href={CONTACT.linkedin} target="_blank" rel="noopener noreferrer" aria-label="LinkedIn da Ponte" className="hover:text-fg"><LinkedinIcon /></a>
+              </nav>
+            </div>
+            <div className="flex flex-col items-center justify-between gap-3 lg:flex-row">
+              <nav aria-label="Rodape" className="flex flex-wrap justify-center gap-x-4 gap-y-1 [&>a]:whitespace-nowrap">
+                <Link href="/sobre" className="hover:text-fg">Sobre</Link>
+                <Link href="/quem-somos" className="hover:text-fg">Quem somos</Link>
+                <Link href="/contatos" className="hover:text-fg">Contatos</Link>
+                <Link href="/sou-mentor" className="hover:text-fg">Sou Mentor</Link>
+                <Link href="/sou-mentorado" className="hover:text-fg">Sou Mentorado</Link>
+                <Link href="/sou-empresa" className="hover:text-fg">Sou Empresa</Link>
+                <Link href="/termos" className="hover:text-fg">Termos</Link>
+                <Link href="/privacidade" className="hover:text-fg">Privacidade</Link>
+                <Link href="/conduta" className="hover:text-fg">Conduta</Link>
+              </nav>
+              <div className="flex flex-wrap items-center justify-center gap-4">
+                {process.env.VERCEL_ENV !== "production" && <span>Contas de demo: ana@ponte.dev / Ponte@2026</span>}
+                <Link
+                  href="/admin/login"
+                  className="rounded-md border border-line px-3 py-1.5 text-muted hover:border-accent hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  Administracao
+                </Link>
+              </div>
             </div>
           </div>
         </footer>
