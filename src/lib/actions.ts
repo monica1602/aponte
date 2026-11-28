@@ -25,6 +25,7 @@ import { PAYMENT_INFO_MAX, PRICE_MAX_CENTS, PRICE_MIN_CENTS, parsePrice } from "
 import { alertAdmin, ROLE_PT } from "./admin-alert";
 import { passwordProblem } from "./password-policy";
 import { emailUser } from "./user-email";
+import { alertMatchingMentees } from "./opportunity-alerts";
 import { LINK_RE, bareUrl } from "./url";
 import { checkInWindow, checkOutOpen, eventEnded, eventStarted, spTime } from "./event-time";
 import { adminLoginLimits, claimOwnerWarning, clearLoginAttempts, loginLimits, passwordMatches, progressiveWait, sameSecret, waitSecondsMessage } from "./login-guard";
@@ -55,6 +56,9 @@ import { adminConfirmEmail, createVerificationToken, sendVerificationEmail, mark
 const WEBSITE_MAX = 500;
 const CONTRIBUTION_TITLE_MAX = 150;
 const CONTRIBUTION_DESCRIPTION_MAX = 1000;
+const OPPORTUNITY_TITLE_MAX = 150;
+const OPPORTUNITY_DESCRIPTION_MAX = 1000;
+const OPPORTUNITY_SKILLS_MAX = 300;
 
 async function nameOf(id: number): Promise<string> {
   const r = (await getDb().prepare("SELECT name FROM users WHERE id = ?").get(id)) as { name: string } | undefined;
@@ -773,11 +777,17 @@ export async function addOpportunity(formData: FormData) {
   if (!title || !["open_source", "evento", "vaga"].includes(type)) {
     back("/dashboard", "error", "Preencha titulo e tipo da oportunidade.");
   }
-  await getDb()
+  if (title.length > OPPORTUNITY_TITLE_MAX) back("/dashboard", "error", `Titulo da oportunidade: use no maximo ${OPPORTUNITY_TITLE_MAX} caracteres.`);
+  const description = str(formData, "description");
+  if (description.length > OPPORTUNITY_DESCRIPTION_MAX) back("/dashboard", "error", `Descricao da oportunidade: use no maximo ${OPPORTUNITY_DESCRIPTION_MAX} caracteres.`);
+  const skills = str(formData, "skills");
+  if (skills.length > OPPORTUNITY_SKILLS_MAX) back("/dashboard", "error", `Skills da oportunidade: use no maximo ${OPPORTUNITY_SKILLS_MAX} caracteres.`);
+  const r = await getDb()
     .prepare(
       "INSERT INTO opportunities (owner_id, type, title, description, skills) VALUES (?,?,?,?,?)"
     )
-    .run(user.id, type, title, str(formData, "description"), str(formData, "skills"));
+    .run(user.id, type, title, description, skills);
+  await alertMatchingMentees({ id: Number(r.lastInsertRowid), ownerId: user.id, title, skills });
   back("/dashboard", "msg", "Oportunidade publicada.");
 }
 

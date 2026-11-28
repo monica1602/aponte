@@ -62,9 +62,9 @@ export function SkillChips({ skills }: { skills: string }) {
   );
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({ children, className = "", id }: { children: ReactNode; className?: string; id?: string }) {
   return (
-    <div className={`rounded-lg border border-line bg-surface p-5 ${className}`}>
+    <div id={id} className={`rounded-lg border border-line bg-surface p-5 ${className}`}>
       {children}
     </div>
   );

@@ -70,7 +70,7 @@ export default async function OportunidadesPage({
       ) : (
         <div className="space-y-4">
           {rows.map((o) => (
-            <Card key={o.id}>
+            <Card key={o.id} id={`oportunidade-${o.id}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <Badge kind={o.type} label={TYPE_LABELS[o.type]} />{" "}
