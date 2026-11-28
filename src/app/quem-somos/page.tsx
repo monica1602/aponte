@@ -26,12 +26,12 @@ export default function QuemSomosPage() {
     <div className="py-12">
       <Eyebrow>Quem somos</Eyebrow>
       <h1 className="mt-4 text-4xl font-bold leading-tight tracking-tight sm:text-5xl">Quem somos</h1>
-      <ul aria-label="Quem somos" className="mt-10 space-y-6">
-        {PEOPLE.map((p) => (
-          <li key={p.name} className="flex flex-col gap-6 rounded-lg border border-line bg-surface p-6 sm:flex-row sm:items-start">
+      <ul aria-label="Quem somos" className="mt-12 space-y-16">
+        {PEOPLE.map((p, i) => (
+          <li key={p.name} className={`flex flex-col items-center gap-8 sm:items-center ${i % 2 ? "sm:flex-row-reverse" : "sm:flex-row"}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p.photo} alt={`Foto de ${p.name}`} width={160} height={160} className="h-40 w-40 shrink-0 rounded-lg object-cover" />
-            <div>
+            <img src={p.photo} alt={`Foto de ${p.name}`} width={192} height={192} className="h-48 w-48 shrink-0 rounded-2xl object-cover shadow-xl shadow-black/40" />
+            <div className="w-full">
               <h2 className="text-2xl font-bold tracking-tight">{p.name}</h2>
               <p className="mt-3 leading-relaxed text-muted">{p.bio}</p>
             </div>
