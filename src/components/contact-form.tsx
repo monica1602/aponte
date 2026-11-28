@@ -26,20 +26,19 @@ export function ContactForm({ name = "", email = "" }: { name?: string; email?: 
         <span className="text-muted">E-mail</span>
         <input name="email" type="email" required maxLength={CONTACT_MAX.email} autoComplete="email" defaultValue={f.email} className={inputCls} />
       </label>
-      <fieldset className="space-y-2 text-sm">
-        <legend className="mb-1.5 text-muted">Tipo</legend>
-        <div className="flex flex-wrap gap-2">
-          {CONTACT_TYPES.map((t) => (
-            <label
-              key={t}
-              className="cursor-pointer rounded-full border border-line px-4 py-1.5 text-muted transition-colors hover:border-fg/40 hover:text-fg has-checked:border-accent has-checked:bg-accent has-checked:font-medium has-checked:text-ink has-focus-visible:ring-2 has-focus-visible:ring-accent/60"
-            >
-              <input type="radio" name="type" value={t} defaultChecked={f.type === t} className="sr-only" />
-              {t}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <label className="block space-y-1.5 text-sm">
+        <span className="text-muted">Tipo</span>
+        <span className="relative block">
+          <select name="type" required defaultValue={f.type} className={`${inputCls} cursor-pointer appearance-none pr-10`}>
+            {CONTACT_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted">
+            <path d="m5 8 5 5 5-5" />
+          </svg>
+        </span>
+      </label>
       <label className="block space-y-1.5 text-sm">
         <span className="text-muted">Descrição</span>
         <textarea name="message" required maxLength={CONTACT_MAX.message} rows={6} defaultValue={f.message} className={`${inputCls} resize-y`} />

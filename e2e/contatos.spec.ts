@@ -29,7 +29,7 @@ test("pagina Contatos: menu, rodape, envio para o e-mail da Ponte, recusa e limi
   const fill = async (text: string) => {
     await page.getByLabel("Nome").fill(name);
     await page.getByLabel("E-mail").fill("visitante@e2e.test");
-    await page.getByText("Elogio", { exact: true }).click();
+    await page.getByLabel("Tipo").selectOption("Elogio");
     await page.getByLabel("Descrição").fill(text);
   };
 
@@ -38,7 +38,7 @@ test("pagina Contatos: menu, rodape, envio para o e-mail da Ponte, recusa e limi
   await page.getByRole("button", { name: "Enviar mensagem" }).click();
   await expect(page.locator("form").getByRole("alert")).toHaveText("Escreva a descrição.");
   await expect(page.getByLabel("Nome")).toHaveValue(name);
-  await expect(page.getByLabel("Elogio")).toBeChecked();
+  await expect(page.getByLabel("Tipo")).toHaveValue("Elogio");
 
   await page.getByLabel("Descrição").fill("Adorei a plataforma!\nParabens.");
   await page.getByRole("button", { name: "Enviar mensagem" }).click();
